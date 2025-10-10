@@ -1,0 +1,25 @@
+# Pod Disruption Budget - Ensures high availability during updates
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: backend-pdb
+  namespace: mocklab
+spec:
+  minAvailable: 1  # Always keep at least 1 backend pod running
+  selector:
+    matchLabels:
+      app: mocklab
+      component: backend
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: frontend-pdb
+  namespace: mocklab
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: mocklab
+      component: frontend

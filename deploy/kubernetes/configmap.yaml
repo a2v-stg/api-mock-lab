@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mocklab-config
+  namespace: mocklab
+data:
+  # Non-sensitive configuration
+  PYTHONUNBUFFERED: "1"
+  LOG_LEVEL: "info"
+  
+  # Database connection (sensitive values in Secret)
+  # DATABASE_URL constructed from Secret values

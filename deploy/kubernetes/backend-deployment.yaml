@@ -1,0 +1,103 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: mocklab
+  labels:
+    app: mocklab
+    component: backend
+spec:
+  replicas: 2  # Minimum replicas, HPA will adjust
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0  # Zero downtime deployments
+  selector:
+    matchLabels:
+      app: mocklab
+      component: backend
+  template:
+    metadata:
+      labels:
+        app: mocklab
+        component: backend
+    spec:
+      # Use IRSA (IAM Roles for Service Accounts) for AWS access
+      serviceAccountName: mocklab-backend
+      
+      containers:
+      - name: backend
+        image: YOUR_ECR_REPO/mocklab-backend:latest
+        imagePullPolicy: Always
+        
+        ports:
+        - name: http
+          containerPort: 8001
+          protocol: TCP
+        
+        env:
+        - name: PYTHONUNBUFFERED
+          valueFrom:
+            configMapKeyRef:
+              name: mocklab-config
+              key: PYTHONUNBUFFERED
+        
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: mocklab-secret
+              key: DATABASE_URL
+        
+        - name: SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: mocklab-secret
+              key: SECRET_KEY
+        
+        resources:
+          requests:
+            cpu: 500m      # 0.5 CPU
+            memory: 512Mi  # 512 MB
+          limits:
+            cpu: 1000m     # 1 CPU
+            memory: 1Gi    # 1 GB
+        
+        # Health checks
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8001
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8001
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        
+        # Graceful shutdown
+        lifecycle:
+          preStop:
+            exec:
+              command: ["/bin/sh", "-c", "sleep 5"]
+      
+      # Pod disruption budget for high availability
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: component
+                  operator: In
+                  values:
+                  - backend
+              topologyKey: kubernetes.io/hostname

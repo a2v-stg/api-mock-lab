@@ -48,7 +48,6 @@ htmlcov/
 # Environment
 .env
 .env.local
-.env.production
 .env.*.local
 
 # Database
@@ -64,7 +63,22 @@ backend.log
 # Build artifacts
 frontend/dist/
 frontend/build/
-frontend/.vite/
+.vite/
 
-# Docker volumes
-postgres_data/
+# Git
+.git/
+.gitignore
+
+# Documentation (optional - keep if you want docs in container)
+# README.md
+# DEVELOPMENT_GUIDE.md
+# FEATURES.md
+
+# Scripts (keep for reference)
+# start-backend.sh
+# start-frontend.sh
+
+# Docker
+docker-compose.yml
+Dockerfile*
+.dockerignore

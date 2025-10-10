@@ -42,16 +42,42 @@
 
 ## 🚀 Quick Start
 
-### Prerequisites
-- Python 3.12+
-- Node.js 16+
-- npm or yarn
+### Option 1: Docker (Recommended for Production)
 
-### 1. Clone & Setup
+**Prerequisites:** Docker & Docker Compose
 
 ```bash
+# 1. Clone repository
 git clone <your-repo>
-cd mocker
+cd api-mock-lab
+
+# 2. Setup environment
+cp .env.example .env
+# Edit .env and update SECRET_KEY and POSTGRES_PASSWORD
+
+# 3. Start with Docker
+cd deploy/docker
+docker-compose up -d --build
+
+# Or use Makefile
+make up
+
+# Or run automated test
+./docker-test.sh
+```
+
+**Access:** http://localhost:3000
+
+📚 **See [deploy/docs/DOCKER_QUICK_START.md](deploy/docs/DOCKER_QUICK_START.md) for detailed guide**
+
+### Option 2: Local Development
+
+**Prerequisites:** Python 3.12+, Node.js 16+
+
+```bash
+# 1. Clone & Setup
+git clone <your-repo>
+cd api-mock-lab
 
 # Backend setup
 pip install -r requirements.txt
@@ -60,25 +86,16 @@ pip install -r requirements.txt
 cd frontend
 npm install
 cd ..
-```
 
-### 2. Start Services
-
-```bash
+# 2. Start Services
 # Terminal 1 - Backend
 ./start-backend.sh
-# or
-uvicorn backend.main:app --reload --port 8001
 
 # Terminal 2 - Frontend
 ./start-frontend.sh
-# or
-cd frontend && npm run dev
 ```
 
-### 3. Access the App
-
-Open **http://localhost:3000**
+**Access:** http://localhost:3000
 
 ## 📖 Usage Guide
 
@@ -295,26 +312,45 @@ mocker/
 
 ## 🚢 Deployment
 
-**Backend:**
+All deployment configurations are in the **`deploy/`** directory.
+
+### Docker Deployment (Local/VPS)
+
 ```bash
-# Production server
-pip install gunicorn
-gunicorn backend.main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8001
+cd deploy/docker
+docker-compose up -d --build
+
+# Or using Makefile
+make up
 ```
 
-**Frontend:**
+📚 **Guide:** [deploy/docs/DOCKER_QUICK_START.md](deploy/docs/DOCKER_QUICK_START.md)
+
+### AWS ECS (Fargate) - Recommended for Cloud ✅
+
 ```bash
-cd frontend
-npm run build
-# Serve the 'dist' folder with nginx/apache
+cd deploy/aws-ecs
+./deploy.sh
 ```
 
-**Environment Variables:**
+📚 **Guide:** [deploy/docs/ECS_DEPLOYMENT_GUIDE.md](deploy/docs/ECS_DEPLOYMENT_GUIDE.md)
+
+### AWS EKS (Kubernetes)
+
 ```bash
-# .env file
-SECRET_KEY=your-secret-key-here
-DATABASE_URL=sqlite:///./mocker.db
+cd deploy/kubernetes
+kubectl apply -f .
 ```
+
+📚 **Guide:** [deploy/docs/EKS_DEPLOYMENT_GUIDE.md](deploy/docs/EKS_DEPLOYMENT_GUIDE.md)
+
+### Complete Deployment Overview
+
+See **[deploy/README.md](deploy/README.md)** for:
+- Deployment method comparison
+- Cost estimates
+- Architecture decisions
+- Complete guides for all platforms
 
 ## 🤝 Contributing
 
