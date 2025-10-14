@@ -406,7 +406,7 @@ Your Mock-Lab application is now running in Docker with:
 ---
 
 For questions or issues, refer to:
-- [DOCKER_QUICK_START.md](DOCKER_QUICK_START.md) - Quick reference
-- [DEPLOYMENT.md](DEPLOYMENT.md) - Full deployment guide
-- [README.md](README.md) - Application overview
-- [FEATURES.md](FEATURES.md) - Feature documentation
+- [DOCKER_QUICK_START.md](./DOCKER_QUICK_START.md) - Quick reference
+- [DEPLOYMENT.md](../deploy/docs/DEPLOYMENT.md) - Full deployment guide
+- [README.md](../README.md) - Application overview
+- [FEATURES.md](./FEATURES.md) - Feature documentation

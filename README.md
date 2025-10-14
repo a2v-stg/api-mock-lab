@@ -40,6 +40,8 @@
 - ⏰ **Time-Ago Display** - Auto-updating timestamps
 - 📋 **Copy-Paste Ready** - Easy endpoint URLs
 
+ **See [BUSINESS_USE_CASES](documentation/BUSINESS_USE_CASES.md) for detailed usage**
+
 ## 🚀 Quick Start
 
 ### Option 1: Docker (Recommended for Production)
