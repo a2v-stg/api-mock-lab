@@ -32,9 +32,13 @@ class Entity(Base):
     name = Column(String, unique=True, index=True)
     api_key = Column(String, unique=True, index=True, default=lambda: secrets.token_urlsafe(32))
     base_path = Column(String, unique=True, index=True)  # e.g., /api/entity123
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # Owner of the entity
+    is_public = Column(Boolean, default=False)  # Public entities are visible to all
     created_at = Column(DateTime, default=datetime.utcnow)
     
-    # Many-to-many relationship with users
+    # Relationship with owner
+    owner = relationship("User", foreign_keys=[owner_id])
+    # Many-to-many relationship with users (for sharing)
     users = relationship("User", secondary=user_entity_association, back_populates="entities")
     mock_endpoints = relationship("MockEndpoint", back_populates="entity", cascade="all, delete-orphan")
     request_logs = relationship("RequestLog", back_populates="entity", cascade="all, delete-orphan")

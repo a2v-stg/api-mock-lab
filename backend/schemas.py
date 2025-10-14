@@ -37,16 +37,26 @@ class ResponseScenario(BaseModel):
 # Entity Schemas (renamed from Tenant)
 class EntityCreate(BaseModel):
     name: str
+    is_public: bool = False  # Default to private
+
+class EntityUpdate(BaseModel):
+    name: Optional[str] = None
+    is_public: Optional[bool] = None
 
 class EntityResponse(BaseModel):
     id: int
     name: str
     api_key: str
     base_path: str
+    owner_id: Optional[int]
+    is_public: bool
     created_at: datetime
     
     class Config:
         from_attributes = True
+
+class EntityShareRequest(BaseModel):
+    user_id: int  # ID of user to share with
 
 # Mock Endpoint Schemas
 class MockEndpointCreate(BaseModel):

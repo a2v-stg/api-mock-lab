@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, createContext, useContext } from 'react'
 import { BrowserRouter as Router, Routes, Route, Link, useParams, useNavigate, Navigate } from 'react-router-dom'
-import { Server, Plus, Eye, Settings, Activity, Trash2, Edit, Copy, Check, Menu, X, Radio, LogIn, LogOut, Beaker, FlaskConical } from 'lucide-react'
+import { Server, Plus, Eye, Settings, Activity, Trash2, Edit, Copy, Check, Menu, X, Radio, LogIn, LogOut, Beaker, FlaskConical, Users, Share2, Globe, Lock } from 'lucide-react'
 import axios from 'axios'
 
 // Auth Context
@@ -73,7 +73,7 @@ function Navbar({ showNavLinks = false }) {
             {auth?.user ? (
               <>
                 <Link to="/entities" className="text-sm opacity-90 hover:opacity-100 px-4 py-2 rounded-lg bg-white bg-opacity-20 hover:bg-opacity-30 transition">
-                  My Entities
+                  My Collections
                 </Link>
                 <div className="text-sm opacity-90">
                   Hello, <span className="font-semibold">{auth.user.username}</span>
@@ -127,7 +127,7 @@ function LandingPage() {
             Welcome to Mock-Lab
           </h1>
           <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-            A powerful, real-time API mocking service with multi-entity support, 
+            A powerful, real-time API mocking service with multi-collection support, 
             dynamic response scenarios, and live traffic monitoring.
           </p>
         </div>
@@ -160,9 +160,9 @@ function LandingPage() {
             <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mb-4">
               <Server className="w-6 h-6 text-purple-600" />
             </div>
-            <h3 className="text-xl font-bold text-gray-900 mb-2">Multi-Entity</h3>
+            <h3 className="text-xl font-bold text-gray-900 mb-2">Multi-Collection</h3>
             <p className="text-gray-600">
-              Each entity gets a unique base path and API key. 
+              Each collection gets a unique base path and API key. 
               Perfect for testing multiple projects simultaneously.
             </p>
           </div>
@@ -181,7 +181,7 @@ function LandingPage() {
                   1
                 </div>
                 <div>
-                  <h4 className="font-bold text-gray-900 mb-1">Create a Entity</h4>
+                  <h4 className="font-bold text-gray-900 mb-1">Create a Collection</h4>
                   <p className="text-sm text-gray-600">
                     Give your project a name. You'll get a unique base URL and API key.
                   </p>
@@ -285,7 +285,7 @@ function LandingPage() {
             className="inline-flex items-center gap-3 bg-blue-600 text-white px-8 py-4 rounded-lg hover:bg-blue-700 transition text-lg font-semibold shadow-lg hover:shadow-xl"
           >
             <Plus className="w-6 h-6" />
-            {auth?.user ? 'Go to My Entities' : 'Get Started - Create Account'}
+            {auth?.user ? 'Go to My Collections' : 'Get Started - Create Account'}
           </button>
           <p className="text-sm text-gray-600 mt-4">
             {auth?.user ? 'Start creating mock endpoints' : 'No credit card required • Free forever • Start mocking in seconds'}
@@ -524,6 +524,7 @@ function ProtectedRoute({ children }) {
 function EntitiesPage() {
   const [entities, setEntities] = useState([])
   const [newEntityName, setNewEntityName] = useState('')
+  const [isPublic, setIsPublic] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -553,23 +554,27 @@ function EntitiesPage() {
     if (!newEntityName.trim()) return
     
     try {
-      await api.post('/admin/entities', { name: newEntityName })
+      await api.post('/admin/entities', { 
+        name: newEntityName,
+        is_public: isPublic 
+      })
       setNewEntityName('')
+      setIsPublic(false)
       setShowCreateModal(false)
       loadEntities()
     } catch (error) {
-      alert('Error creating entity: ' + (error.response?.data?.detail || error.message))
+      alert('Error creating collection: ' + (error.response?.data?.detail || error.message))
     }
   }
 
   const deleteEntity = async (id) => {
-    if (!confirm('Are you sure you want to delete this entity? All endpoints and logs will be deleted.')) return
+    if (!confirm('Are you sure you want to delete this collection? All endpoints and logs will be deleted.')) return
     
     try {
       await api.delete(`/admin/entities/${id}`)
       loadEntities()
     } catch (error) {
-      alert('Error deleting entity: ' + error.message)
+      alert('Error deleting collection: ' + error.message)
     }
   }
 
@@ -590,15 +595,15 @@ function EntitiesPage() {
         <div className="bg-white rounded-lg shadow-md p-6">
           <div className="flex justify-between items-center">
             <div>
-              <h1 className="text-3xl font-bold text-gray-800">My Entities</h1>
-              <p className="text-gray-600 mt-1">Manage your API mock entities</p>
+              <h1 className="text-3xl font-bold text-gray-800">My Collections</h1>
+              <p className="text-gray-600 mt-1">Manage your API mock collections</p>
             </div>
             <button
               onClick={() => setShowCreateModal(true)}
               className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 flex items-center gap-2 transition shadow-md hover:shadow-lg"
             >
               <Plus className="w-5 h-5" />
-              Create Entity
+              Create Collection
             </button>
           </div>
         </div>
@@ -621,19 +626,19 @@ function EntitiesPage() {
           {entities.length === 0 ? (
             <div className="text-center py-16">
               <FlaskConical className="w-20 h-20 mx-auto mb-6 text-gray-300" />
-              <h3 className="text-xl font-semibold text-gray-700 mb-2">No entities yet</h3>
-              <p className="text-gray-500 mb-6">Create your first entity to start mocking APIs</p>
+              <h3 className="text-xl font-semibold text-gray-700 mb-2">No collections yet</h3>
+              <p className="text-gray-500 mb-6">Create your first collection to start mocking APIs</p>
               <button
                 onClick={() => setShowCreateModal(true)}
                 className="bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 inline-flex items-center gap-2 transition shadow-md hover:shadow-lg"
               >
                 <Plus className="w-5 h-5" />
-                Create Your First Entity
+                Create Your First Collection
               </button>
             </div>
           ) : (
             <div>
-              <h2 className="text-xl font-semibold text-gray-800 mb-4">All Entities ({entities.length})</h2>
+              <h2 className="text-xl font-semibold text-gray-800 mb-4">All Collections ({entities.length})</h2>
               <div className="grid gap-4">
                 {entities.map((entity) => (
                   <EntityCard key={entity.id} entity={entity} onDelete={deleteEntity} />
@@ -649,11 +654,12 @@ function EntitiesPage() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-8">
             <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold text-gray-800">Create New Entity</h2>
+              <h2 className="text-2xl font-bold text-gray-800">Create New Collection</h2>
               <button
                 onClick={() => {
                   setShowCreateModal(false)
                   setNewEntityName('')
+                  setIsPublic(false)
                 }}
                 className="text-gray-400 hover:text-gray-600 transition"
               >
@@ -664,7 +670,7 @@ function EntitiesPage() {
             <form onSubmit={createEntity} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Entity Name
+                  Collection Name
                 </label>
                 <input
                   type="text"
@@ -675,8 +681,21 @@ function EntitiesPage() {
                   autoFocus
                 />
                 <p className="text-xs text-gray-500 mt-2">
-                  This will create a base URL: <code className="bg-gray-100 px-2 py-1 rounded">/api/your-entity-name</code>
+                  This will create a base URL: <code className="bg-gray-100 px-2 py-1 rounded">/api/your-collection-name</code>
                 </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="is_public"
+                  checked={isPublic}
+                  onChange={(e) => setIsPublic(e.target.checked)}
+                  className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                />
+                <label htmlFor="is_public" className="text-sm text-gray-700">
+                  Make this collection public (visible to everyone)
+                </label>
               </div>
 
               <div className="flex gap-3 pt-4">
@@ -709,6 +728,8 @@ function EntitiesPage() {
 function EntityCard({ entity, onDelete }) {
   const navigate = useNavigate()
   const [copied, setCopied] = useState(false)
+  const auth = useAuth()
+  const isOwner = auth.user && entity.owner_id === auth.user.id
 
   const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text)
@@ -720,7 +741,19 @@ function EntityCard({ entity, onDelete }) {
     <div className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition">
       <div className="flex justify-between items-start">
         <div className="flex-1">
-          <h3 className="text-xl font-semibold text-gray-800">{entity.name}</h3>
+          <div className="flex items-center gap-2 mb-2">
+            <h3 className="text-xl font-semibold text-gray-800">{entity.name}</h3>
+            {entity.is_public && (
+              <span className="px-2 py-0.5 rounded bg-green-100 text-green-800 text-xs font-semibold">
+                PUBLIC
+              </span>
+            )}
+            {!isOwner && (
+              <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-800 text-xs font-semibold">
+                SHARED
+              </span>
+            )}
+          </div>
           <div className="mt-2 space-y-1">
             <div className="flex items-center gap-2 text-sm text-gray-600">
               <span className="font-medium">Base Path:</span>
@@ -744,14 +777,16 @@ function EntityCard({ entity, onDelete }) {
             className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2 transition"
           >
             <Activity className="w-4 h-4" />
-            Explore
+            Explore APIs
           </button>
-          <button
-            onClick={() => onDelete(entity.id)}
-            className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 flex items-center gap-2 transition"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
+          {isOwner && (
+            <button
+              onClick={() => onDelete(entity.id)}
+              className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 flex items-center gap-2 transition"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -764,17 +799,23 @@ function EntityDetail() {
   const [endpoints, setEndpoints] = useState([])
   const [logs, setLogs] = useState([])
   const [showEndpointPanel, setShowEndpointPanel] = useState(false)
+  const [showSettingsPanel, setShowSettingsPanel] = useState(false)
   const [editingEndpoint, setEditingEndpoint] = useState(null)
   const [isConnected, setIsConnected] = useState(false)
   const [searchFilter, setSearchFilter] = useState('')
   const [selectedLogIndex, setSelectedLogIndex] = useState(-1)
+  const [users, setUsers] = useState([])
+  const [selectedUserId, setSelectedUserId] = useState('')
   const ws = useRef(null)
   const navigate = useNavigate()
+  const auth = useAuth()
+  const isOwner = auth.user && entity && entity.owner_id === auth.user.id
 
   useEffect(() => {
     loadEntity()
     loadEndpoints()
     loadLogs()
+    loadUsers()
     connectWebSocket()
 
     return () => {
@@ -783,6 +824,16 @@ function EntityDetail() {
       }
     }
   }, [entityId])
+
+  const loadUsers = async () => {
+    try {
+      const response = await api.get('/users')
+      setUsers(Array.isArray(response.data) ? response.data : [])
+    } catch (error) {
+      console.error('Error loading users:', error)
+      setUsers([])
+    }
+  }
 
   const connectWebSocket = () => {
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -873,6 +924,47 @@ function EntityDetail() {
     }
   }
 
+  const togglePublic = async () => {
+    try {
+      await api.put(`/admin/entities/${entityId}`, {
+        is_public: !entity.is_public
+      })
+      loadEntity()
+    } catch (error) {
+      alert('Error updating collection visibility: ' + (error.response?.data?.detail || error.message))
+    }
+  }
+
+  const shareEntity = async () => {
+    if (!selectedUserId) {
+      alert('Please select a user to share with')
+      return
+    }
+
+    try {
+      await api.post(`/admin/entities/${entityId}/share`, {
+        user_id: parseInt(selectedUserId)
+      })
+      setSelectedUserId('')
+      alert('Collection shared successfully!')
+      loadEntity()
+    } catch (error) {
+      alert('Error sharing collection: ' + (error.response?.data?.detail || error.message))
+    }
+  }
+
+  const unshareEntity = async (userId) => {
+    if (!confirm('Are you sure you want to revoke access for this user?')) return
+
+    try {
+      await api.delete(`/admin/entities/${entityId}/share/${userId}`)
+      alert('Access revoked successfully!')
+      loadEntity()
+    } catch (error) {
+      alert('Error revoking access: ' + (error.response?.data?.detail || error.message))
+    }
+  }
+
   if (!entity) {
     return <div className="text-center py-12">Loading...</div>
   }
@@ -903,18 +995,27 @@ function EntityDetail() {
                 </p>
               </div>
               <div className="flex gap-2">
+                {isOwner && (
+                  <button
+                    onClick={() => setShowSettingsPanel(!showSettingsPanel)}
+                    className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 flex items-center gap-2 transition"
+                  >
+                    <Share2 className="w-5 h-5" />
+                    {showSettingsPanel ? 'Hide' : 'Settings & Share'}
+                  </button>
+                )}
                 <button
                   onClick={() => setShowEndpointPanel(!showEndpointPanel)}
                   className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 flex items-center gap-2 transition"
                 >
                   <Settings className="w-5 h-5" />
-                  {showEndpointPanel ? 'Hide' : 'Manage'} Endpoints
+                  {showEndpointPanel ? 'Hide' : 'Manage'} API Endpoints
                 </button>
                 <button
                   onClick={() => navigate('/entities')}
                   className="text-gray-600 hover:text-gray-800 px-4 py-2 rounded-lg border border-gray-300 hover:border-gray-400 transition"
                 >
-                  ← Back to Entities
+                  ← Back to Collections
                 </button>
               </div>
             </div>
@@ -1082,6 +1183,115 @@ function EntityDetail() {
           </div>
         </div>
       )}
+
+      {/* Side Panel - Settings & Sharing */}
+      {showSettingsPanel && isOwner && (
+        <div className="w-96 bg-white shadow-xl border-l border-gray-200 overflow-auto">
+          <div className="sticky top-0 bg-white border-b border-gray-200 p-4 z-10">
+            <div className="flex justify-between items-center">
+              <h3 className="text-lg font-bold text-gray-800">Collection Settings</h3>
+              <button
+                onClick={() => setShowSettingsPanel(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+          
+          <div className="p-4 space-y-6">
+            {/* Visibility Settings */}
+            <div className="border border-gray-200 rounded-lg p-4">
+              <h4 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                {entity.is_public ? <Globe className="w-5 h-5 text-green-600" /> : <Lock className="w-5 h-5 text-gray-600" />}
+                Visibility
+              </h4>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-700">Public Collection</p>
+                    <p className="text-xs text-gray-500">Anyone can view and use this collection</p>
+                  </div>
+                  <button
+                    onClick={togglePublic}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${
+                      entity.is_public ? 'bg-green-600' : 'bg-gray-300'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
+                        entity.is_public ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+                <div className={`text-xs px-3 py-2 rounded ${
+                  entity.is_public ? 'bg-green-50 text-green-700' : 'bg-gray-50 text-gray-700'
+                }`}>
+                  {entity.is_public 
+                    ? '✓ This collection is publicly accessible' 
+                    : '🔒 This collection is private'}
+                </div>
+              </div>
+            </div>
+
+            {/* Share with Users */}
+            <div className="border border-gray-200 rounded-lg p-4">
+              <h4 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                <Users className="w-5 h-5" />
+                Share with Users
+              </h4>
+              <div className="space-y-3">
+                <div className="flex gap-2">
+                  <select
+                    value={selectedUserId}
+                    onChange={(e) => setSelectedUserId(e.target.value)}
+                    className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  >
+                    <option value="">Select a user...</option>
+                    {users.filter(u => u.id !== auth.user.id).map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {user.username} ({user.email})
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={shareEntity}
+                    disabled={!selectedUserId}
+                    className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition text-sm"
+                  >
+                    Share
+                  </button>
+                </div>
+                
+                {/* List of shared users (from entity.users if available) */}
+                <div className="mt-4">
+                  <p className="text-xs text-gray-600 mb-2 font-medium">Shared with:</p>
+                  <div className="text-xs text-gray-500 bg-gray-50 p-3 rounded">
+                    {entity.users && entity.users.length > 0 ? (
+                      <div className="space-y-2">
+                        {entity.users.map((user) => (
+                          <div key={user.id} className="flex items-center justify-between bg-white p-2 rounded border border-gray-200">
+                            <span>{user.username}</span>
+                            <button
+                              onClick={() => unshareEntity(user.id)}
+                              className="text-red-600 hover:text-red-700 text-xs"
+                            >
+                              Revoke
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-center">Not shared with anyone yet</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       </div>
     </div>
   )
@@ -1240,6 +1450,8 @@ function EndpointForm({ entityId, endpoint, onSave, onCancel }) {
     response_headers: {},
     delay_ms: 0
   })
+  
+  const [editingScenarioIndex, setEditingScenarioIndex] = useState(null)
 
   const addScenario = () => {
     if (!currentScenario.name.trim()) {
@@ -1249,10 +1461,25 @@ function EndpointForm({ entityId, endpoint, onSave, onCancel }) {
     
     try {
       JSON.parse(currentScenario.response_body)
-      setFormData({
-        ...formData,
-        response_scenarios: [...formData.response_scenarios, currentScenario]
-      })
+      
+      if (editingScenarioIndex !== null) {
+        // Update existing scenario
+        const newScenarios = [...formData.response_scenarios]
+        newScenarios[editingScenarioIndex] = currentScenario
+        setFormData({
+          ...formData,
+          response_scenarios: newScenarios
+        })
+        setEditingScenarioIndex(null)
+      } else {
+        // Add new scenario
+        setFormData({
+          ...formData,
+          response_scenarios: [...formData.response_scenarios, currentScenario]
+        })
+      }
+      
+      // Reset form
       setCurrentScenario({
         name: '',
         response_code: 200,
@@ -1264,6 +1491,22 @@ function EndpointForm({ entityId, endpoint, onSave, onCancel }) {
       alert('Invalid JSON in response body')
     }
   }
+  
+  const editScenario = (index) => {
+    setCurrentScenario(formData.response_scenarios[index])
+    setEditingScenarioIndex(index)
+  }
+  
+  const cancelEditScenario = () => {
+    setCurrentScenario({
+      name: '',
+      response_code: 200,
+      response_body: '{\n  "message": "Success"\n}',
+      response_headers: {},
+      delay_ms: 0
+    })
+    setEditingScenarioIndex(null)
+  }
 
   const removeScenario = (index) => {
     const newScenarios = formData.response_scenarios.filter((_, i) => i !== index)
@@ -1272,6 +1515,13 @@ function EndpointForm({ entityId, endpoint, onSave, onCancel }) {
       response_scenarios: newScenarios,
       active_scenario_index: Math.min(formData.active_scenario_index || 0, Math.max(0, newScenarios.length - 1))
     })
+    
+    // Clear edit state if we're deleting the scenario being edited
+    if (editingScenarioIndex === index) {
+      cancelEditScenario()
+    } else if (editingScenarioIndex !== null && editingScenarioIndex > index) {
+      setEditingScenarioIndex(editingScenarioIndex - 1)
+    }
   }
 
   const handleSubmit = async (e) => {
@@ -1394,9 +1644,15 @@ function EndpointForm({ entityId, endpoint, onSave, onCancel }) {
           <h4 className="font-semibold text-gray-800 border-b pb-2">Response Scenarios</h4>
           <p className="text-sm text-gray-600">Add multiple response scenarios and switch between them dynamically</p>
           
-          {/* Add new scenario */}
-          <div className="bg-gray-50 p-4 rounded-lg border-2 border-dashed border-gray-300 space-y-3">
-            <h5 className="font-medium text-sm text-gray-700">Add New Scenario</h5>
+          {/* Add/Edit scenario */}
+          <div className={`p-4 rounded-lg border-2 space-y-3 ${
+            editingScenarioIndex !== null 
+              ? 'bg-blue-50 border-blue-300' 
+              : 'bg-gray-50 border-dashed border-gray-300'
+          }`}>
+            <h5 className="font-medium text-sm text-gray-700">
+              {editingScenarioIndex !== null ? 'Edit Scenario' : 'Add New Scenario'}
+            </h5>
             
             <div className="grid grid-cols-3 gap-3">
               <div className="col-span-2">
@@ -1444,15 +1700,39 @@ function EndpointForm({ entityId, endpoint, onSave, onCancel }) {
               />
             </div>
             
-            <button
-              type="button"
-              onClick={addScenario}
-              disabled={!currentScenario.name}
-              className="w-full bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition flex items-center justify-center gap-2"
-            >
-              <Plus className="w-4 h-4" />
-              Add Scenario
-            </button>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={addScenario}
+                disabled={!currentScenario.name}
+                className={`flex-1 text-white px-4 py-2 rounded-lg disabled:bg-gray-400 disabled:cursor-not-allowed transition flex items-center justify-center gap-2 ${
+                  editingScenarioIndex !== null 
+                    ? 'bg-blue-600 hover:bg-blue-700' 
+                    : 'bg-green-600 hover:bg-green-700'
+                }`}
+              >
+                {editingScenarioIndex !== null ? (
+                  <>
+                    <Check className="w-4 h-4" />
+                    Update Scenario
+                  </>
+                ) : (
+                  <>
+                    <Plus className="w-4 h-4" />
+                    Add Scenario
+                  </>
+                )}
+              </button>
+              {editingScenarioIndex !== null && (
+                <button
+                  type="button"
+                  onClick={cancelEditScenario}
+                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition"
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
           </div>
 
           {/* List of scenarios */}
@@ -1460,7 +1740,11 @@ function EndpointForm({ entityId, endpoint, onSave, onCancel }) {
             <div className="space-y-2">
               <p className="text-sm font-medium text-gray-700">Configured Scenarios ({formData.response_scenarios.length}):</p>
               {formData.response_scenarios.map((scenario, index) => (
-                <div key={index} className="bg-white p-3 rounded-lg border border-gray-300 hover:border-blue-400 transition">
+                <div key={index} className={`p-3 rounded-lg border transition ${
+                  editingScenarioIndex === index 
+                    ? 'bg-blue-50 border-blue-400 border-2' 
+                    : 'bg-white border-gray-300 hover:border-blue-400'
+                }`}>
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
@@ -1476,18 +1760,33 @@ function EndpointForm({ entityId, endpoint, onSave, onCancel }) {
                         {scenario.delay_ms > 0 && (
                           <span className="text-xs text-gray-500">⏱ {scenario.delay_ms}ms</span>
                         )}
+                        {editingScenarioIndex === index && (
+                          <span className="text-xs text-blue-600 font-semibold">Editing...</span>
+                        )}
                       </div>
                       <pre className="text-xs text-gray-600 bg-gray-50 p-2 rounded mt-1 overflow-auto max-h-20">
                         {scenario.response_body}
                       </pre>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => removeScenario(index)}
-                      className="text-red-600 hover:text-red-700 ml-2 p-1"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <div className="flex gap-1 ml-2">
+                      <button
+                        type="button"
+                        onClick={() => editScenario(index)}
+                        disabled={editingScenarioIndex !== null}
+                        className="text-blue-600 hover:text-blue-700 disabled:text-gray-400 disabled:cursor-not-allowed p-1"
+                        title="Edit scenario"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => removeScenario(index)}
+                        className="text-red-600 hover:text-red-700 p-1"
+                        title="Delete scenario"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
