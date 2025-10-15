@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, createContext, useContext } from 'react'
 import { BrowserRouter as Router, Routes, Route, Link, useParams, useNavigate, Navigate } from 'react-router-dom'
-import { Server, Plus, Eye, Settings, Activity, Trash2, Edit, Copy, Check, Menu, X, Radio, LogIn, LogOut, Beaker, FlaskConical, Users, Share2, Globe, Lock } from 'lucide-react'
+import { Server, Plus, Eye, Settings, Activity, Trash2, Edit, Copy, Check, Menu, X, Radio, LogIn, LogOut, Beaker, FlaskConical, Users, Share2, Globe, Lock, BarChart3, Shield } from 'lucide-react'
 import axios from 'axios'
 
 // Auth Context
@@ -75,8 +75,15 @@ function Navbar({ showNavLinks = false }) {
                 <Link to="/entities" className="text-sm opacity-90 hover:opacity-100 px-4 py-2 rounded-lg bg-white bg-opacity-20 hover:bg-opacity-30 transition">
                   My Collections
                 </Link>
+                {auth.user.is_admin && (
+                  <Link to="/admin" className="text-sm opacity-90 hover:opacity-100 px-4 py-2 rounded-lg bg-white bg-opacity-20 hover:bg-opacity-30 transition flex items-center gap-2">
+                    <Shield className="w-4 h-4" />
+                    Admin
+                  </Link>
+                )}
                 <div className="text-sm opacity-90">
                   Hello, <span className="font-semibold">{auth.user.username}</span>
+                  {auth.user.is_admin && <span className="ml-2 px-2 py-0.5 rounded bg-yellow-400 text-yellow-900 text-xs font-bold">ADMIN</span>}
                 </div>
                 <button
                   onClick={auth.logout}
@@ -2069,6 +2076,364 @@ function LogDetailView({ log }) {
   )
 }
 
+// Admin Dashboard
+function AdminDashboard() {
+  const [stats, setStats] = useState(null)
+  const [users, setUsers] = useState([])
+  const [collections, setCollections] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState('overview') // overview, users, collections
+  const navigate = useNavigate()
+  const auth = useAuth()
+
+  useEffect(() => {
+    // Check if user is admin
+    if (!auth.user?.is_admin) {
+      alert('Admin access required')
+      navigate('/entities')
+      return
+    }
+    
+    loadDashboardData()
+  }, [auth.user, navigate])
+
+  const loadDashboardData = async () => {
+    try {
+      const [statsRes, usersRes, collectionsRes] = await Promise.all([
+        api.get('/admin/dashboard/stats'),
+        api.get('/admin/dashboard/users'),
+        api.get('/admin/dashboard/collections')
+      ])
+      
+      setStats(statsRes.data)
+      setUsers(usersRes.data)
+      setCollections(collectionsRes.data)
+    } catch (error) {
+      console.error('Error loading dashboard data:', error)
+      if (error.response?.status === 403) {
+        alert('Admin access required')
+        navigate('/entities')
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-100">
+        <Navbar showNavLinks={false} />
+        <div className="flex justify-center items-center h-64">
+          <div className="text-gray-500">Loading dashboard...</div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-100">
+      <Navbar showNavLinks={false} />
+      
+      <div className="container mx-auto px-4 py-8">
+        {/* Header */}
+        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Shield className="w-8 h-8 text-purple-600" />
+              <div>
+                <h1 className="text-3xl font-bold text-gray-800">Admin Dashboard</h1>
+                <p className="text-gray-600 mt-1">System overview and management</p>
+              </div>
+            </div>
+            <button
+              onClick={() => navigate('/entities')}
+              className="text-gray-600 hover:text-gray-800 px-4 py-2 rounded-lg border border-gray-300 hover:border-gray-400 transition"
+            >
+              ← Back to Collections
+            </button>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="bg-white rounded-lg shadow-md mb-6">
+          <div className="border-b border-gray-200">
+            <div className="flex">
+              <button
+                onClick={() => setActiveTab('overview')}
+                className={`px-6 py-4 font-medium transition ${
+                  activeTab === 'overview'
+                    ? 'border-b-2 border-purple-600 text-purple-600'
+                    : 'text-gray-600 hover:text-gray-800'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <BarChart3 className="w-5 h-5" />
+                  Overview
+                </div>
+              </button>
+              <button
+                onClick={() => setActiveTab('users')}
+                className={`px-6 py-4 font-medium transition ${
+                  activeTab === 'users'
+                    ? 'border-b-2 border-purple-600 text-purple-600'
+                    : 'text-gray-600 hover:text-gray-800'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Users className="w-5 h-5" />
+                  Users ({users.length})
+                </div>
+              </button>
+              <button
+                onClick={() => setActiveTab('collections')}
+                className={`px-6 py-4 font-medium transition ${
+                  activeTab === 'collections'
+                    ? 'border-b-2 border-purple-600 text-purple-600'
+                    : 'text-gray-600 hover:text-gray-800'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Server className="w-5 h-5" />
+                  Collections ({collections.length})
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Tab Content */}
+        {activeTab === 'overview' && stats && (
+          <div className="space-y-6">
+            {/* Stats Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <StatCard
+                title="Total Users"
+                value={stats.total_users}
+                icon={<Users className="w-8 h-8" />}
+                color="blue"
+                subtitle={`${stats.admin_users} admin(s)`}
+              />
+              <StatCard
+                title="Collections"
+                value={stats.total_collections}
+                icon={<Server className="w-8 h-8" />}
+                color="green"
+                subtitle={`${stats.public_collections} public, ${stats.private_collections} private`}
+              />
+              <StatCard
+                title="Mock Endpoints"
+                value={stats.total_endpoints}
+                icon={<Settings className="w-8 h-8" />}
+                color="purple"
+              />
+              <StatCard
+                title="Total Requests"
+                value={stats.total_requests}
+                icon={<Activity className="w-8 h-8" />}
+                color="orange"
+                subtitle={`${stats.requests_today} today`}
+              />
+            </div>
+
+            {/* Additional Stats */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="bg-white rounded-lg shadow-md p-6">
+                <h3 className="text-lg font-semibold text-gray-800 mb-4">Request Activity</h3>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-600">Today</span>
+                    <span className="text-2xl font-bold text-blue-600">{stats.requests_today}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-600">This Week</span>
+                    <span className="text-2xl font-bold text-green-600">{stats.requests_this_week}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-600">All Time</span>
+                    <span className="text-2xl font-bold text-purple-600">{stats.total_requests}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-lg shadow-md p-6">
+                <h3 className="text-lg font-semibold text-gray-800 mb-4">System Summary</h3>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-600">Average Endpoints per Collection</span>
+                    <span className="text-xl font-bold text-gray-800">
+                      {stats.total_collections > 0 ? (stats.total_endpoints / stats.total_collections).toFixed(1) : 0}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-600">Average Collections per User</span>
+                    <span className="text-xl font-bold text-gray-800">
+                      {stats.total_users > 0 ? (stats.total_collections / stats.total_users).toFixed(1) : 0}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-600">Average Requests per Collection</span>
+                    <span className="text-xl font-bold text-gray-800">
+                      {stats.total_collections > 0 ? (stats.total_requests / stats.total_collections).toFixed(0) : 0}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'users' && (
+          <div className="bg-white rounded-lg shadow-md overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Collections Owned</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Collections Shared</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Endpoints</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Requests</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Joined</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {users.map((user) => (
+                    <tr key={user.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="font-medium text-gray-900">{user.username}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-600">{user.email}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {user.is_admin ? (
+                          <span className="px-2 py-1 rounded bg-yellow-100 text-yellow-800 text-xs font-semibold">
+                            ADMIN
+                          </span>
+                        ) : (
+                          <span className="px-2 py-1 rounded bg-gray-100 text-gray-800 text-xs font-semibold">
+                            USER
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        {user.collections_owned}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        {user.collections_shared}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        {user.total_endpoints}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        {user.total_requests}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        {new Date(user.created_at).toLocaleDateString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'collections' && (
+          <div className="bg-white rounded-lg shadow-md overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Collection Name</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Base Path</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Owner</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Visibility</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Endpoints</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Requests</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Request</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {collections.map((collection) => (
+                    <tr key={collection.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="font-medium text-gray-900">{collection.name}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <code className="text-xs text-gray-600 bg-gray-100 px-2 py-1 rounded">
+                          {collection.base_path}
+                        </code>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        {collection.owner_username}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {collection.is_public ? (
+                          <span className="px-2 py-1 rounded bg-green-100 text-green-800 text-xs font-semibold flex items-center gap-1 w-fit">
+                            <Globe className="w-3 h-3" />
+                            PUBLIC
+                          </span>
+                        ) : (
+                          <span className="px-2 py-1 rounded bg-gray-100 text-gray-800 text-xs font-semibold flex items-center gap-1 w-fit">
+                            <Lock className="w-3 h-3" />
+                            PRIVATE
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        {collection.endpoint_count}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        {collection.request_count}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        {collection.last_request_at 
+                          ? new Date(collection.last_request_at).toLocaleString()
+                          : 'Never'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        {new Date(collection.created_at).toLocaleDateString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// Stat Card Component
+function StatCard({ title, value, icon, color, subtitle }) {
+  const colorClasses = {
+    blue: 'bg-blue-100 text-blue-600',
+    green: 'bg-green-100 text-green-600',
+    purple: 'bg-purple-100 text-purple-600',
+    orange: 'bg-orange-100 text-orange-600',
+    red: 'bg-red-100 text-red-600',
+  }
+
+  return (
+    <div className="bg-white rounded-lg shadow-md p-6">
+      <div className="flex items-center justify-between mb-4">
+        <div className={`p-3 rounded-lg ${colorClasses[color]}`}>
+          {icon}
+        </div>
+      </div>
+      <h3 className="text-gray-600 text-sm font-medium mb-1">{title}</h3>
+      <div className="text-3xl font-bold text-gray-800">{value}</div>
+      {subtitle && <p className="text-xs text-gray-500 mt-1">{subtitle}</p>}
+    </div>
+  )
+}
+
 // Main App
 function App() {
   return (
@@ -2091,6 +2456,11 @@ function App() {
           <Route path="/entity/:entityId" element={
             <ProtectedRoute>
               <EntityDetail />
+            </ProtectedRoute>
+          } />
+          <Route path="/admin" element={
+            <ProtectedRoute>
+              <AdminDashboard />
             </ProtectedRoute>
           } />
         </Routes>

@@ -16,6 +16,7 @@ class UserResponse(BaseModel):
     id: int
     email: str
     username: str
+    is_admin: bool = False
     created_at: datetime
     
     class Config:
@@ -125,3 +126,43 @@ class RequestLogResponse(BaseModel):
     
     class Config:
         from_attributes = True
+
+# Admin Dashboard Schemas
+class UserStatsResponse(BaseModel):
+    id: int
+    email: str
+    username: str
+    is_admin: bool
+    created_at: datetime
+    collections_owned: int
+    collections_shared: int
+    total_endpoints: int
+    total_requests: int
+    
+    class Config:
+        from_attributes = True
+
+class CollectionStatsResponse(BaseModel):
+    id: int
+    name: str
+    base_path: str
+    owner_username: str
+    is_public: bool
+    created_at: datetime
+    endpoint_count: int
+    request_count: int
+    last_request_at: Optional[datetime]
+    
+    class Config:
+        from_attributes = True
+
+class DashboardStatsResponse(BaseModel):
+    total_users: int
+    total_collections: int
+    total_endpoints: int
+    total_requests: int
+    public_collections: int
+    private_collections: int
+    admin_users: int
+    requests_today: int
+    requests_this_week: int

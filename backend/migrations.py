@@ -16,6 +16,9 @@ def run_migrations(engine):
         # Migration 1: Add owner_id and is_public to entities table
         migrate_add_entity_access_control(engine)
         
+        # Migration 2: Add is_admin to users table
+        migrate_add_user_admin_field(engine)
+        
         logger.info("All migrations completed successfully")
     except Exception as e:
         logger.error(f"Migration failed: {e}")
@@ -84,3 +87,39 @@ def migrate_add_entity_access_control(engine):
             logger.info("✓ Added is_public column")
         else:
             logger.info("✓ is_public column already exists")
+
+
+def migrate_add_user_admin_field(engine):
+    """
+    Migration: Add is_admin field to users table
+    - Adds is_admin column to users table (defaults to False)
+    """
+    if not table_exists(engine, 'users'):
+        logger.info("Users table doesn't exist yet, skipping migration")
+        return
+    
+    with engine.connect() as conn:
+        # Check if is_admin column exists
+        if not column_exists(engine, 'users', 'is_admin'):
+            logger.info("Adding is_admin column to users table")
+            
+            # Determine database type for boolean default syntax
+            db_url = str(engine.url)
+            
+            if 'sqlite' in db_url:
+                # SQLite uses 0/1 for boolean
+                conn.execute(text("""
+                    ALTER TABLE users 
+                    ADD COLUMN is_admin INTEGER DEFAULT 0 NOT NULL
+                """))
+            else:
+                # PostgreSQL uses TRUE/FALSE
+                conn.execute(text("""
+                    ALTER TABLE users 
+                    ADD COLUMN is_admin BOOLEAN DEFAULT FALSE NOT NULL
+                """))
+            
+            conn.commit()
+            logger.info("✓ Added is_admin column")
+        else:
+            logger.info("✓ is_admin column already exists")

@@ -14,7 +14,8 @@ from backend.schemas import (
     UserCreate, UserLogin, UserResponse, LoginResponse,
     EntityCreate, EntityUpdate, EntityResponse, EntityShareRequest,
     MockEndpointCreate, MockEndpointUpdate, MockEndpointResponse,
-    RequestLogResponse
+    RequestLogResponse,
+    UserStatsResponse, CollectionStatsResponse, DashboardStatsResponse
 )
 from backend.auth import hash_password, verify_password, create_access_token, get_current_user
 from backend.migrations import run_migrations
@@ -152,6 +153,17 @@ def require_entity_ownership(user: User, entity: Entity):
             detail="Only the entity owner can perform this action"
         )
 
+async def get_admin_user(
+    current_user: User = Depends(get_current_user_dependency)
+) -> User:
+    """Dependency to ensure current user is an admin."""
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=403,
+            detail="Admin access required"
+        )
+    return current_user
+
 # ==================== Authentication ====================
 
 @app.post("/auth/register", response_model=UserResponse, tags=["Auth"])
@@ -192,7 +204,8 @@ def login_user(credentials: UserLogin, db: Session = Depends(get_db)):
             id=user.id,
             email=user.email,
             username=user.username,
-            created_at=user.created_at
+            created_at=user.created_at,
+            is_admin=user.is_admin,
         ),
         token=token,
         message="Login successful"
@@ -888,6 +901,132 @@ async def websocket_logs(websocket: WebSocket, entity_id: int, token: Optional[s
         print(f"WebSocket error: {e}")
     finally:
         manager.disconnect(websocket, entity_id)
+
+# ==================== Admin Dashboard ====================
+
+@app.get("/admin/dashboard/stats", response_model=DashboardStatsResponse, tags=["Admin Dashboard"])
+def get_dashboard_stats(
+    db: Session = Depends(get_db),
+    admin_user: User = Depends(get_admin_user)
+):
+    """Get overall system statistics. Admin only."""
+    from datetime import timedelta
+    
+    # Calculate date ranges
+    today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    week_ago = today - timedelta(days=7)
+    
+    # Count totals
+    total_users = db.query(User).count()
+    total_collections = db.query(Entity).count()
+    total_endpoints = db.query(MockEndpoint).count()
+    total_requests = db.query(RequestLog).count()
+    
+    # Count by type
+    public_collections = db.query(Entity).filter(Entity.is_public == True).count()
+    private_collections = total_collections - public_collections
+    admin_users = db.query(User).filter(User.is_admin == True).count()
+    
+    # Count requests by time
+    requests_today = db.query(RequestLog).filter(RequestLog.timestamp >= today).count()
+    requests_this_week = db.query(RequestLog).filter(RequestLog.timestamp >= week_ago).count()
+    
+    return DashboardStatsResponse(
+        total_users=total_users,
+        total_collections=total_collections,
+        total_endpoints=total_endpoints,
+        total_requests=total_requests,
+        public_collections=public_collections,
+        private_collections=private_collections,
+        admin_users=admin_users,
+        requests_today=requests_today,
+        requests_this_week=requests_this_week
+    )
+
+@app.get("/admin/dashboard/users", response_model=List[UserStatsResponse], tags=["Admin Dashboard"])
+def get_all_users_with_stats(
+    db: Session = Depends(get_db),
+    admin_user: User = Depends(get_admin_user)
+):
+    """Get all users with their statistics. Admin only."""
+    users = db.query(User).all()
+    
+    user_stats = []
+    for user in users:
+        # Count collections owned
+        collections_owned = db.query(Entity).filter(Entity.owner_id == user.id).count()
+        
+        # Count collections shared with this user
+        collections_shared = len([e for e in user.entities if e.owner_id != user.id])
+        
+        # Count total endpoints for owned collections
+        total_endpoints = db.query(MockEndpoint).join(Entity).filter(
+            Entity.owner_id == user.id
+        ).count()
+        
+        # Count total requests for owned collections
+        total_requests = db.query(RequestLog).join(Entity).filter(
+            Entity.owner_id == user.id
+        ).count()
+        
+        user_stats.append(UserStatsResponse(
+            id=user.id,
+            email=user.email,
+            username=user.username,
+            is_admin=user.is_admin,
+            created_at=user.created_at,
+            collections_owned=collections_owned,
+            collections_shared=collections_shared,
+            total_endpoints=total_endpoints,
+            total_requests=total_requests
+        ))
+    
+    return user_stats
+
+@app.get("/admin/dashboard/collections", response_model=List[CollectionStatsResponse], tags=["Admin Dashboard"])
+def get_all_collections_with_stats(
+    db: Session = Depends(get_db),
+    admin_user: User = Depends(get_admin_user)
+):
+    """Get all collections with their statistics. Admin only."""
+    entities = db.query(Entity).all()
+    
+    collection_stats = []
+    for entity in entities:
+        # Count endpoints
+        endpoint_count = db.query(MockEndpoint).filter(
+            MockEndpoint.entity_id == entity.id
+        ).count()
+        
+        # Count requests
+        request_count = db.query(RequestLog).filter(
+            RequestLog.entity_id == entity.id
+        ).count()
+        
+        # Get last request timestamp
+        last_log = db.query(RequestLog).filter(
+            RequestLog.entity_id == entity.id
+        ).order_by(RequestLog.timestamp.desc()).first()
+        
+        last_request_at = last_log.timestamp if last_log else None
+        
+        # Get owner username
+        owner = db.query(User).filter(User.id == entity.owner_id).first()
+        owner_username = owner.username if owner else "Unknown"
+        
+        collection_stats.append(CollectionStatsResponse(
+            id=entity.id,
+            name=entity.name,
+            base_path=entity.base_path,
+            owner_username=owner_username,
+            is_public=entity.is_public,
+            created_at=entity.created_at,
+            endpoint_count=endpoint_count,
+            request_count=request_count,
+            last_request_at=last_request_at
+        ))
+    
+    return collection_stats
 
 # Health check
 @app.get("/health", tags=["System"])
