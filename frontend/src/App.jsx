@@ -806,10 +806,17 @@ function EntityDetail() {
   const [selectedLogIndex, setSelectedLogIndex] = useState(-1)
   const [users, setUsers] = useState([])
   const [selectedUserId, setSelectedUserId] = useState('')
+  const [copiedBaseUrl, setCopiedBaseUrl] = useState(false)
   const ws = useRef(null)
   const navigate = useNavigate()
   const auth = useAuth()
   const isOwner = auth.user && entity && entity.owner_id === auth.user.id
+  
+  const copyToClipboard = (text) => {
+    navigator.clipboard.writeText(text)
+    setCopiedBaseUrl(true)
+    setTimeout(() => setCopiedBaseUrl(false), 2000)
+  }
 
   useEffect(() => {
     loadEntity()
@@ -837,7 +844,11 @@ function EntityDetail() {
 
   const connectWebSocket = () => {
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const wsUrl = `${wsProtocol}//${window.location.hostname}:8001/ws/logs/${entityId}`
+    const token = localStorage.getItem('auth_token')
+    // Include token as query parameter for authentication
+    const wsUrl = token 
+      ? `${wsProtocol}//${window.location.hostname}:8001/ws/logs/${entityId}?token=${token}`
+      : `${wsProtocol}//${window.location.hostname}:8001/ws/logs/${entityId}`
     
     ws.current = new WebSocket(wsUrl)
     
@@ -990,9 +1001,18 @@ function EntityDetail() {
                     </span>
                   </div>
                 </div>
-                <p className="text-sm text-gray-600 mt-1">
-                  Base URL: <code className="bg-gray-100 px-2 py-1 rounded">{window.location.origin.replace('3000', '8001')}{entity.base_path}</code>
-                </p>
+                <div className="flex items-center gap-2 mt-1">
+                  <p className="text-sm text-gray-600">
+                    Base URL: <code className="bg-gray-100 px-2 py-1 rounded">{window.location.origin.replace('3000', '8001')}{entity.base_path}</code>
+                  </p>
+                  <button
+                    onClick={() => copyToClipboard(window.location.origin.replace('3000', '8001') + entity.base_path)}
+                    className="text-blue-600 hover:text-blue-700"
+                    title="Copy Base URL"
+                  >
+                    {copiedBaseUrl ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
               <div className="flex gap-2">
                 {isOwner && (
@@ -1174,6 +1194,7 @@ function EntityDetail() {
                     key={endpoint.id}
                     endpoint={endpoint}
                     basePath={entity.base_path}
+                    baseUrl={window.location.origin.replace('3000', '8001') + entity.base_path}
                     onEdit={setEditingEndpoint}
                     onDelete={deleteEndpoint}
                   />
@@ -1297,9 +1318,16 @@ function EntityDetail() {
   )
 }
 
-function EndpointCard({ endpoint, basePath, onEdit, onDelete }) {
+function EndpointCard({ endpoint, basePath, baseUrl, onEdit, onDelete }) {
   const [scenarios, setScenarios] = useState([])
   const [activeScenario, setActiveScenario] = useState(null)
+  const [copiedUrl, setCopiedUrl] = useState(false)
+
+  const copyEndpointUrl = (url) => {
+    navigator.clipboard.writeText(url)
+    setCopiedUrl(true)
+    setTimeout(() => setCopiedUrl(false), 2000)
+  }
 
   useEffect(() => {
     const parsedScenarios = typeof endpoint.response_scenarios === 'string'
@@ -1367,7 +1395,18 @@ function EndpointCard({ endpoint, basePath, onEdit, onDelete }) {
         )}
       </div>
       <h4 className="font-semibold text-gray-800 mb-1">{endpoint.name}</h4>
-      <code className="text-xs text-gray-600 block mb-2">{endpoint.path}</code>
+      <div className="mb-2">
+        <div className="flex items-center gap-2">
+          <code className="text-xs text-gray-600 break-all flex-1">{baseUrl}{endpoint.path}</code>
+          <button
+            onClick={() => copyEndpointUrl(baseUrl + endpoint.path)}
+            className="text-blue-600 hover:text-blue-700 flex-shrink-0"
+            title="Copy Full URL"
+          >
+            {copiedUrl ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+          </button>
+        </div>
+      </div>
       
       {/* Scenarios Switcher */}
       {scenarios.length > 0 && (
