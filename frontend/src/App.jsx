@@ -1,7 +1,32 @@
 import React, { useState, useEffect, useRef, createContext, useContext } from 'react'
 import { BrowserRouter as Router, Routes, Route, Link, useParams, useNavigate, Navigate } from 'react-router-dom'
-import { Server, Plus, Eye, Settings, Activity, Trash2, Edit, Copy, Check, Menu, X, Radio, LogIn, LogOut, Beaker, FlaskConical, Users, Share2, Globe, Lock, BarChart3, Shield } from 'lucide-react'
+import { Server, Plus, Eye, Settings, Activity, Trash2, Edit, Copy, Check, Menu, X, Radio, LogIn, LogOut, Beaker, FlaskConical, Users, Share2, Globe, Lock, BarChart3, Shield, Zap } from 'lucide-react'
 import axios from 'axios'
+
+// Placeholder definitions for autocomplete
+const PLACEHOLDER_LIST = [
+  { value: '{{uuid}}', label: 'UUID', description: 'Generate unique ID', category: 'IDs' },
+  { value: '{{guid}}', label: 'GUID', description: 'Generate GUID (same as UUID)', category: 'IDs' },
+  { value: '{{timestamp}}', label: 'Timestamp (Unix ms)', description: 'Unix timestamp in milliseconds', category: 'Time' },
+  { value: '{{timestamp_iso}}', label: 'Timestamp (ISO)', description: 'ISO 8601 timestamp', category: 'Time' },
+  { value: '{{timestamp_unix}}', label: 'Timestamp (Unix s)', description: 'Unix timestamp in seconds', category: 'Time' },
+  { value: '{{date}}', label: 'Date', description: 'Current date (YYYY-MM-DD)', category: 'Time' },
+  { value: '{{datetime}}', label: 'DateTime', description: 'Current datetime', category: 'Time' },
+  { value: '{{time}}', label: 'Time', description: 'Current time (HH:MM:SS)', category: 'Time' },
+  { value: '{{random_name}}', label: 'Random Name', description: 'Random full name', category: 'Personal' },
+  { value: '{{random_first_name}}', label: 'Random First Name', description: 'Random first name', category: 'Personal' },
+  { value: '{{random_last_name}}', label: 'Random Last Name', description: 'Random last name', category: 'Personal' },
+  { value: '{{random_email}}', label: 'Random Email', description: 'Random email address', category: 'Personal' },
+  { value: '{{random_username}}', label: 'Random Username', description: 'Random username', category: 'Personal' },
+  { value: '{{random_int:1:100}}', label: 'Random Integer', description: 'Random integer (edit range)', category: 'Numbers' },
+  { value: '{{random_float:0:100}}', label: 'Random Float', description: 'Random decimal (edit range)', category: 'Numbers' },
+  { value: '{{random}}', label: 'Random (0-1000)', description: 'Random number 0-1000', category: 'Numbers' },
+  { value: '{{random_string:10}}', label: 'Random String', description: 'Random string (edit length)', category: 'Strings' },
+  { value: '{{random_hex:16}}', label: 'Random Hex', description: 'Random hex string (edit length)', category: 'Strings' },
+  { value: '{{random_alphanumeric:10}}', label: 'Random Alphanumeric', description: 'Random alphanumeric (edit length)', category: 'Strings' },
+  { value: '{{random_bool}}', label: 'Random Boolean', description: 'Random true/false', category: 'Other' },
+  { value: '{{random_boolean}}', label: 'Random Boolean', description: 'Random true/false', category: 'Other' },
+]
 
 // Auth Context
 const AuthContext = createContext(null)
@@ -54,6 +79,159 @@ function AuthProvider({ children }) {
     <AuthContext.Provider value={{ user, login, logout, loading }}>
       {children}
     </AuthContext.Provider>
+  )
+}
+
+// Placeholder Autocomplete Component
+function PlaceholderTextarea({ value, onChange, placeholder, rows = 6, className = '' }) {
+  const [showSuggestions, setShowSuggestions] = useState(false)
+  const [filteredPlaceholders, setFilteredPlaceholders] = useState([])
+  const [selectedIndex, setSelectedIndex] = useState(0)
+  const [cursorPosition, setCursorPosition] = useState(0)
+  const textareaRef = useRef(null)
+
+  // Detect {{ typing and show suggestions
+  const handleChange = (e) => {
+    const newValue = e.target.value
+    const cursorPos = e.target.selectionStart
+    
+    onChange(e)
+    setCursorPosition(cursorPos)
+
+    // Check if user just typed {{
+    const textBeforeCursor = newValue.substring(0, cursorPos)
+    const lastTwoBrackets = textBeforeCursor.lastIndexOf('{{')
+    
+    if (lastTwoBrackets !== -1) {
+      const searchText = textBeforeCursor.substring(lastTwoBrackets + 2)
+      
+      // Only show if no closing }} yet
+      const hasClosing = searchText.includes('}}')
+      
+      if (!hasClosing) {
+        // Filter placeholders
+        const filtered = PLACEHOLDER_LIST.filter(p =>
+          p.value.toLowerCase().includes(searchText.toLowerCase()) ||
+          p.label.toLowerCase().includes(searchText.toLowerCase())
+        )
+        
+        if (filtered.length > 0) {
+          setFilteredPlaceholders(filtered)
+          setSelectedIndex(0)
+          setShowSuggestions(true)
+        } else {
+          setShowSuggestions(false)
+        }
+      } else {
+        setShowSuggestions(false)
+      }
+    } else {
+      setShowSuggestions(false)
+    }
+  }
+
+  // Handle keyboard navigation
+  const handleKeyDown = (e) => {
+    if (!showSuggestions) return
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setSelectedIndex(prev => (prev + 1) % filteredPlaceholders.length)
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setSelectedIndex(prev => (prev - 1 + filteredPlaceholders.length) % filteredPlaceholders.length)
+    } else if (e.key === 'Enter' && showSuggestions) {
+      e.preventDefault()
+      insertPlaceholder(filteredPlaceholders[selectedIndex])
+    } else if (e.key === 'Escape') {
+      setShowSuggestions(false)
+    }
+  }
+
+  // Insert placeholder at cursor position
+  const insertPlaceholder = (placeholder) => {
+    const textarea = textareaRef.current
+    if (!textarea) return
+
+    const currentValue = textarea.value
+    const cursorPos = textarea.selectionStart
+    
+    // Find the {{ before cursor
+    const textBeforeCursor = currentValue.substring(0, cursorPos)
+    const lastBrackets = textBeforeCursor.lastIndexOf('{{')
+    
+    if (lastBrackets !== -1) {
+      // Replace from {{ to cursor with the full placeholder
+      const before = currentValue.substring(0, lastBrackets)
+      const after = currentValue.substring(cursorPos)
+      const newValue = before + placeholder.value + after
+      
+      // Create synthetic event
+      const syntheticEvent = {
+        target: {
+          value: newValue,
+          selectionStart: lastBrackets + placeholder.value.length
+        }
+      }
+      
+      onChange(syntheticEvent)
+      setShowSuggestions(false)
+      
+      // Set cursor position after insertion
+      setTimeout(() => {
+        textarea.selectionStart = textarea.selectionEnd = lastBrackets + placeholder.value.length
+        textarea.focus()
+      }, 0)
+    }
+  }
+
+  return (
+    <div className="relative">
+      <textarea
+        ref={textareaRef}
+        value={value}
+        onChange={handleChange}
+        onKeyDown={handleKeyDown}
+        onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+        placeholder={placeholder}
+        rows={rows}
+        className={className}
+      />
+      
+      {/* Autocomplete Dropdown */}
+      {showSuggestions && filteredPlaceholders.length > 0 && (
+        <div className="absolute z-50 mt-1 w-full max-w-md bg-white border border-gray-300 rounded-lg shadow-xl max-h-64 overflow-auto">
+          <div className="sticky top-0 bg-blue-50 px-3 py-2 border-b border-blue-200 text-xs font-semibold text-blue-900 flex items-center gap-2">
+            <Zap className="w-3 h-3" />
+            Placeholder Suggestions
+          </div>
+          {filteredPlaceholders.map((item, index) => (
+            <div
+              key={item.value}
+              onClick={() => insertPlaceholder(item)}
+              className={`px-3 py-2 cursor-pointer transition ${
+                index === selectedIndex
+                  ? 'bg-blue-100 border-l-4 border-blue-500'
+                  : 'hover:bg-gray-50'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="font-medium text-sm text-gray-800">{item.label}</div>
+                  <div className="text-xs text-gray-500">{item.description}</div>
+                </div>
+                <code className="text-xs bg-gray-100 px-2 py-1 rounded text-purple-600">
+                  {item.value}
+                </code>
+              </div>
+            </div>
+          ))}
+          <div className="sticky bottom-0 bg-gray-50 px-3 py-1.5 border-t border-gray-200 text-xs text-gray-600 text-center">
+            Use ↑↓ to navigate, Enter to select, Esc to close
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -268,6 +446,18 @@ function LandingPage() {
             </div>
             <div className="flex items-center gap-2">
               <Check className="w-5 h-5 flex-shrink-0" />
+              <span>🎲 Dynamic placeholders (UUID, timestamps, random data)</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Check className="w-5 h-5 flex-shrink-0" />
+              <span>🔔 Async callbacks with configurable delays</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Check className="w-5 h-5 flex-shrink-0" />
+              <span>✅ JSON Schema request validation</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Check className="w-5 h-5 flex-shrink-0" />
               <span>Request/response filtering</span>
             </div>
             <div className="flex items-center gap-2">
@@ -277,6 +467,10 @@ function LandingPage() {
             <div className="flex items-center gap-2">
               <Check className="w-5 h-5 flex-shrink-0" />
               <span>Path parameter support (/users/{"{id}"})</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Check className="w-5 h-5 flex-shrink-0" />
+              <span>User authentication & multi-entity support</span>
             </div>
             <div className="flex items-center gap-2">
               <Check className="w-5 h-5 flex-shrink-0" />
@@ -1414,6 +1608,25 @@ function EndpointCard({ endpoint, basePath, baseUrl, onEdit, onDelete }) {
           </button>
         </div>
       </div>
+
+      {/* Advanced Features Indicators */}
+      {(endpoint.callback_enabled || endpoint.schema_validation_enabled) && (
+        <div className="flex gap-1 mb-2 flex-wrap">
+          {endpoint.callback_enabled && (
+            <span className="px-2 py-0.5 rounded bg-orange-100 text-orange-700 text-xs font-semibold flex items-center gap-1" title="Async callbacks enabled">
+              🔔 Callbacks
+            </span>
+          )}
+          {endpoint.schema_validation_enabled && (
+            <span className="px-2 py-0.5 rounded bg-green-100 text-green-700 text-xs font-semibold flex items-center gap-1" title="Request validation enabled">
+              ✅ Validation
+            </span>
+          )}
+          <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-700 text-xs font-semibold flex items-center gap-1" title="Supports dynamic placeholders">
+            🎲 Placeholders
+          </span>
+        </div>
+      )}
       
       {/* Scenarios Switcher */}
       {scenarios.length > 0 && (
@@ -1452,12 +1665,22 @@ function EndpointCard({ endpoint, basePath, baseUrl, onEdit, onDelete }) {
 }
 
 function EndpointForm({ entityId, endpoint, onSave, onCancel }) {
+  const [currentStep, setCurrentStep] = useState(1) // 1 = Config, 2 = Scenarios
+  
   const [formData, setFormData] = useState(() => {
     if (endpoint) {
       // Parse response_scenarios if it's a string
       const scenarios = typeof endpoint.response_scenarios === 'string'
         ? JSON.parse(endpoint.response_scenarios)
         : endpoint.response_scenarios || []
+      
+      // Debug logging
+      console.log('Loading endpoint for editing:', {
+        id: endpoint.id,
+        callback_enabled: endpoint.callback_enabled,
+        callback_url: endpoint.callback_url,
+        schema_validation_enabled: endpoint.schema_validation_enabled
+      })
       
       return {
         name: endpoint.name || '',
@@ -1471,6 +1694,16 @@ function EndpointForm({ entityId, endpoint, onSave, onCancel }) {
         response_body: '{}',
         response_headers: {},
         delay_ms: 0,
+        // Advanced features - use explicit boolean check
+        callback_enabled: endpoint.callback_enabled === true,
+        callback_url: endpoint.callback_url || '',
+        callback_method: endpoint.callback_method || 'POST',
+        callback_delay_ms: endpoint.callback_delay_ms || 0,
+        callback_extract_from_request: endpoint.callback_extract_from_request === true,
+        callback_extract_field: endpoint.callback_extract_field || '',
+        callback_payload: endpoint.callback_payload || '',
+        schema_validation_enabled: endpoint.schema_validation_enabled === true,
+        request_schema: endpoint.request_schema || '',
       }
     }
     
@@ -1486,6 +1719,16 @@ function EndpointForm({ entityId, endpoint, onSave, onCancel }) {
       response_body: '{}',
       response_headers: {},
       delay_ms: 0,
+      // Advanced features
+      callback_enabled: false,
+      callback_url: '',
+      callback_method: 'POST',
+      callback_delay_ms: 0,
+      callback_extract_from_request: false,
+      callback_extract_field: '',
+      callback_payload: '',
+      schema_validation_enabled: false,
+      request_schema: '',
     }
   })
   
@@ -1498,6 +1741,21 @@ function EndpointForm({ entityId, endpoint, onSave, onCancel }) {
   })
   
   const [editingScenarioIndex, setEditingScenarioIndex] = useState(null)
+
+  const goToStep = (step) => {
+    // Validate Step 1 before moving to Step 2
+    if (step === 2 && currentStep === 1) {
+      if (!formData.name.trim()) {
+        alert('Please enter an endpoint name')
+        return
+      }
+      if (!formData.path.trim()) {
+        alert('Please enter an endpoint path')
+        return
+      }
+    }
+    setCurrentStep(step)
+  }
 
   const addScenario = () => {
     if (!currentScenario.name.trim()) {
@@ -1592,7 +1850,24 @@ function EndpointForm({ entityId, endpoint, onSave, onCancel }) {
         response_body: formData.response_scenarios[0]?.response_body || '{}',
         response_headers: formData.response_scenarios[0]?.response_headers || {},
         delay_ms: 0,
+        // Advanced features - Callback configuration
+        callback_enabled: formData.callback_enabled,
+        callback_url: formData.callback_url || null,
+        callback_method: formData.callback_method,
+        callback_delay_ms: formData.callback_delay_ms,
+        callback_extract_from_request: formData.callback_extract_from_request,
+        callback_extract_field: formData.callback_extract_field || null,
+        callback_payload: formData.callback_payload || null,
+        // Advanced features - Schema validation
+        schema_validation_enabled: formData.schema_validation_enabled,
+        request_schema: formData.request_schema || null,
       }
+      
+      console.log('Submitting endpoint data:', {
+        callback_enabled: submitData.callback_enabled,
+        callback_url: submitData.callback_url,
+        schema_validation_enabled: submitData.schema_validation_enabled
+      })
       
       if (endpoint && endpoint.id) {
         // Update
@@ -1604,6 +1879,7 @@ function EndpointForm({ entityId, endpoint, onSave, onCancel }) {
       onSave()
     } catch (error) {
       alert('Error saving endpoint: ' + (error.response?.data?.detail || error.message))
+      console.error('Submit error:', error)
     }
   }
 
@@ -1612,9 +1888,20 @@ function EndpointForm({ entityId, endpoint, onSave, onCancel }) {
       {/* Modal Header */}
       <div className="sticky top-0 bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-6 rounded-t-lg">
         <div className="flex justify-between items-center">
-          <h3 className="text-2xl font-bold">
-            {endpoint && endpoint.id ? 'Edit' : 'Create'} Mock Endpoint
-          </h3>
+          <div>
+            <h3 className="text-2xl font-bold">
+              {endpoint && endpoint.id ? 'Edit' : 'Create'} Mock Endpoint
+            </h3>
+            <div className="flex items-center gap-2 mt-2 text-sm opacity-90">
+              <div className={`px-3 py-1 rounded ${currentStep === 1 ? 'bg-white bg-opacity-30' : 'bg-white bg-opacity-10'}`}>
+                Step 1: Configuration
+              </div>
+              <span>→</span>
+              <div className={`px-3 py-1 rounded ${currentStep === 2 ? 'bg-white bg-opacity-30' : 'bg-white bg-opacity-10'}`}>
+                Step 2: Scenarios
+              </div>
+            </div>
+          </div>
           <button
             onClick={onCancel}
             className="text-white hover:text-gray-200 transition"
@@ -1626,9 +1913,12 @@ function EndpointForm({ entityId, endpoint, onSave, onCancel }) {
       
       {/* Modal Body */}
       <form onSubmit={handleSubmit} className="p-6 space-y-6">
-        {/* Basic Info */}
-        <div className="space-y-4">
-          <h4 className="font-semibold text-gray-800 border-b pb-2">Basic Information</h4>
+        {/* Step 1: Configuration */}
+        {currentStep === 1 && (
+          <>
+            {/* Basic Info */}
+            <div className="space-y-4">
+              <h4 className="font-semibold text-gray-800 border-b pb-2">Basic Information</h4>
           
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Endpoint Name</label>
@@ -1685,183 +1975,401 @@ function EndpointForm({ entityId, endpoint, onSave, onCancel }) {
           </div>
         </div>
 
-        {/* Response Scenarios Section */}
-        <div className="space-y-4">
-          <h4 className="font-semibold text-gray-800 border-b pb-2">Response Scenarios</h4>
-          <p className="text-sm text-gray-600">Add multiple response scenarios and switch between them dynamically</p>
+        {/* Advanced Features Section */}
+        <div className="space-y-4 border-t pt-6">
+          <h4 className="font-semibold text-gray-800 pb-2 flex items-center gap-2">
+            <Settings className="w-5 h-5" />
+            Advanced Features
+          </h4>
           
-          {/* Add/Edit scenario */}
-          <div className={`p-4 rounded-lg border-2 space-y-3 ${
-            editingScenarioIndex !== null 
-              ? 'bg-blue-50 border-blue-300' 
-              : 'bg-gray-50 border-dashed border-gray-300'
-          }`}>
-            <h5 className="font-medium text-sm text-gray-700">
-              {editingScenarioIndex !== null ? 'Edit Scenario' : 'Add New Scenario'}
-            </h5>
-            
-            <div className="grid grid-cols-3 gap-3">
-              <div className="col-span-2">
-                <input
-                  type="text"
-                  value={currentScenario.name}
-                  onChange={(e) => setCurrentScenario({ ...currentScenario, name: e.target.value })}
-                  placeholder="Scenario name (e.g., Success, Rate Limited)"
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                />
+          {/* Dynamic Placeholders Helper */}
+          <details className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <summary className="cursor-pointer font-medium text-blue-900 flex items-center gap-2">
+              🎲 Dynamic Placeholders - Click to see available placeholders
+            </summary>
+            <div className="mt-3 text-sm space-y-2">
+              <p className="text-blue-800">Use placeholders in your response body to generate dynamic values on each request:</p>
+              <div className="bg-white rounded p-3 space-y-1 font-mono text-xs">
+                <div><span className="text-purple-600">{`{{uuid}}`}</span> - Generate UUID</div>
+                <div><span className="text-purple-600">{`{{timestamp_iso}}`}</span> - ISO timestamp</div>
+                <div><span className="text-purple-600">{`{{timestamp}}`}</span> - Unix timestamp (ms)</div>
+                <div><span className="text-purple-600">{`{{date}}`}</span> - Current date (YYYY-MM-DD)</div>
+                <div><span className="text-purple-600">{`{{random_name}}`}</span> - Random full name</div>
+                <div><span className="text-purple-600">{`{{random_email}}`}</span> - Random email</div>
+                <div><span className="text-purple-600">{`{{random_int:1:100}}`}</span> - Random integer (1-100)</div>
+                <div><span className="text-purple-600">{`{{random_float:10:100}}`}</span> - Random float</div>
+                <div><span className="text-purple-600">{`{{random_string:10}}`}</span> - Random string (10 chars)</div>
+                <div><span className="text-purple-600">{`{{random_bool}}`}</span> - Random boolean</div>
               </div>
-              <div>
-                <input
-                  type="number"
-                  value={currentScenario.response_code}
-                  onChange={(e) => setCurrentScenario({ ...currentScenario, response_code: parseInt(e.target.value) })}
-                  placeholder="Status"
-                  min="100"
-                  max="599"
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
+              <p className="text-xs text-blue-700 mt-2">📚 See full documentation for complete list of placeholders</p>
             </div>
+          </details>
 
-            <div>
-              <label className="block text-xs text-gray-600 mb-1">Delay (ms) - for 503/504 scenarios</label>
+          {/* Schema Validation - Progressive Disclosure */}
+          <div className="border border-gray-200 rounded-lg p-4 space-y-3">
+            <label className="flex items-center gap-3 cursor-pointer">
               <input
-                type="number"
-                value={currentScenario.delay_ms}
-                onChange={(e) => setCurrentScenario({ ...currentScenario, delay_ms: parseInt(e.target.value) })}
-                placeholder="0"
-                min="0"
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                type="checkbox"
+                checked={formData.schema_validation_enabled}
+                onChange={(e) => setFormData({ ...formData, schema_validation_enabled: e.target.checked })}
+                className="w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-green-500"
               />
-            </div>
+              <div>
+                <div className="font-semibold text-gray-800 flex items-center gap-2">
+                  ✅ Enable Request Schema Validation
+                </div>
+                <div className="text-xs text-gray-600">Validate incoming requests against a JSON schema</div>
+              </div>
+            </label>
             
-            <div>
-              <label className="block text-xs text-gray-600 mb-1">Response Body (JSON)</label>
-              <textarea
-                value={currentScenario.response_body}
-                onChange={(e) => setCurrentScenario({ ...currentScenario, response_body: e.target.value })}
-                placeholder='{"message": "response"}'
-                rows="4"
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono"
-              />
-            </div>
-            
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={addScenario}
-                disabled={!currentScenario.name}
-                className={`flex-1 text-white px-4 py-2 rounded-lg disabled:bg-gray-400 disabled:cursor-not-allowed transition flex items-center justify-center gap-2 ${
-                  editingScenarioIndex !== null 
-                    ? 'bg-blue-600 hover:bg-blue-700' 
-                    : 'bg-green-600 hover:bg-green-700'
-                }`}
-              >
-                {editingScenarioIndex !== null ? (
-                  <>
-                    <Check className="w-4 h-4" />
-                    Update Scenario
-                  </>
-                ) : (
-                  <>
-                    <Plus className="w-4 h-4" />
-                    Add Scenario
-                  </>
-                )}
-              </button>
-              {editingScenarioIndex !== null && (
-                <button
-                  type="button"
-                  onClick={cancelEditScenario}
-                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition"
-                >
-                  Cancel
-                </button>
-              )}
-            </div>
+            {formData.schema_validation_enabled && (
+              <div className="pl-8 pt-2 space-y-2 border-l-4 border-green-500">
+                <label className="block text-sm font-medium text-gray-700">
+                  JSON Schema
+                </label>
+                <textarea
+                  value={formData.request_schema}
+                  onChange={(e) => setFormData({ ...formData, request_schema: e.target.value })}
+                  placeholder={`{\n  "type": "object",\n  "required": ["email", "name"],\n  "properties": {\n    "email": {"type": "string", "format": "email"},\n    "name": {"type": "string", "minLength": 3}\n  }\n}`}
+                  rows="8"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 font-mono bg-white"
+                />
+                <p className="text-xs text-green-700">
+                  💡 Invalid requests will receive a 400 error with validation details
+                </p>
+              </div>
+            )}
           </div>
 
-          {/* List of scenarios */}
-          {formData.response_scenarios && formData.response_scenarios.length > 0 ? (
-            <div className="space-y-2">
-              <p className="text-sm font-medium text-gray-700">Configured Scenarios ({formData.response_scenarios.length}):</p>
-              {formData.response_scenarios.map((scenario, index) => (
-                <div key={index} className={`p-3 rounded-lg border transition ${
-                  editingScenarioIndex === index 
-                    ? 'bg-blue-50 border-blue-400 border-2' 
-                    : 'bg-white border-gray-300 hover:border-blue-400'
-                }`}>
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-semibold text-sm">{scenario.name}</span>
-                        <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
-                          scenario.response_code >= 200 && scenario.response_code < 300 ? 'bg-green-100 text-green-800' :
-                          scenario.response_code >= 400 && scenario.response_code < 500 ? 'bg-orange-100 text-orange-800' :
-                          scenario.response_code >= 500 ? 'bg-red-100 text-red-800' :
-                          'bg-gray-100 text-gray-800'
-                        }`}>
-                          {scenario.response_code}
-                        </span>
-                        {scenario.delay_ms > 0 && (
-                          <span className="text-xs text-gray-500">⏱ {scenario.delay_ms}ms</span>
-                        )}
-                        {editingScenarioIndex === index && (
-                          <span className="text-xs text-blue-600 font-semibold">Editing...</span>
-                        )}
-                      </div>
-                      <pre className="text-xs text-gray-600 bg-gray-50 p-2 rounded mt-1 overflow-auto max-h-20">
-                        {scenario.response_body}
-                      </pre>
+          {/* Async Callbacks - Progressive Disclosure */}
+          <div className="border border-gray-200 rounded-lg p-4 space-y-3">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={formData.callback_enabled}
+                onChange={(e) => setFormData({ ...formData, callback_enabled: e.target.checked })}
+                className="w-5 h-5 text-orange-600 border-gray-300 rounded focus:ring-orange-500"
+              />
+              <div>
+                <div className="font-semibold text-gray-800 flex items-center gap-2">
+                  🔔 Enable Async Callbacks
+                </div>
+                <div className="text-xs text-gray-600">Send HTTP callbacks to external URLs after processing</div>
+              </div>
+            </label>
+
+            {formData.callback_enabled && (
+              <div className="pl-8 pt-2 space-y-3 border-l-4 border-orange-500">
+                {/* Callback URL Configuration */}
+                <div>
+                  <label className="flex items-center gap-2 mb-2">
+                    <input
+                      type="checkbox"
+                      id="callback_extract"
+                      checked={formData.callback_extract_from_request}
+                      onChange={(e) => setFormData({ 
+                        ...formData, 
+                        callback_extract_from_request: e.target.checked,
+                        callback_url: e.target.checked ? '' : formData.callback_url 
+                      })}
+                      className="w-4 h-4 text-orange-600 border-gray-300 rounded focus:ring-orange-500"
+                    />
+                    <span className="text-sm text-gray-700 font-medium">Extract callback URL from request body</span>
+                  </label>
+
+                  {formData.callback_extract_from_request ? (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        JSON field path to extract URL from
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.callback_extract_field}
+                        onChange={(e) => setFormData({ ...formData, callback_extract_field: e.target.value })}
+                        placeholder='e.g., "callback_url" or "meta.webhook.url"'
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500"
+                      />
+                      <p className="text-xs text-gray-600 mt-1">
+                        Supports nested paths with dots. Example: {"{"} "callback_url": "https://..." {"}"}
+                      </p>
                     </div>
-                    <div className="flex gap-1 ml-2">
-                      <button
-                        type="button"
-                        onClick={() => editScenario(index)}
-                        disabled={editingScenarioIndex !== null}
-                        className="text-blue-600 hover:text-blue-700 disabled:text-gray-400 disabled:cursor-not-allowed p-1"
-                        title="Edit scenario"
-                      >
-                        <Edit className="w-4 h-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => removeScenario(index)}
-                        className="text-red-600 hover:text-red-700 p-1"
-                        title="Delete scenario"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                  ) : (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Static callback URL
+                      </label>
+                      <input
+                        type="url"
+                        value={formData.callback_url}
+                        onChange={(e) => setFormData({ ...formData, callback_url: e.target.value })}
+                        placeholder="https://your-app.com/webhook"
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500"
+                      />
                     </div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      HTTP Method
+                    </label>
+                    <select
+                      value={formData.callback_method}
+                      onChange={(e) => setFormData({ ...formData, callback_method: e.target.value })}
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500"
+                    >
+                      <option value="POST">POST</option>
+                      <option value="PUT">PUT</option>
+                      <option value="PATCH">PATCH</option>
+                      <option value="GET">GET</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Delay (ms)
+                    </label>
+                    <input
+                      type="number"
+                      value={formData.callback_delay_ms}
+                      onChange={(e) => setFormData({ ...formData, callback_delay_ms: parseInt(e.target.value) || 0 })}
+                      placeholder="0"
+                      min="0"
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500"
+                    />
                   </div>
                 </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-8 bg-gray-50 rounded-lg border border-dashed border-gray-300">
-              <p className="text-sm text-gray-500">No scenarios added yet</p>
-              <p className="text-xs text-gray-400 mt-1">Add at least one scenario to create the endpoint</p>
-            </div>
-          )}
+
+                {/* Callback Payload - NEW */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Custom Callback Payload (Optional) - Type <code className="bg-blue-100 text-blue-800 px-1 rounded">{`{{`}</code> for autocomplete!
+                  </label>
+                  <PlaceholderTextarea
+                    value={formData.callback_payload}
+                    onChange={(e) => setFormData({ ...formData, callback_payload: e.target.value })}
+                    placeholder={`{\n  "order_id": "{{uuid}}",\n  "status": "completed",\n  "timestamp": "{{timestamp_iso}}"\n}`}
+                    rows={6}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 font-mono bg-white"
+                  />
+                  <p className="text-xs text-gray-600 mt-1">
+                    💡 Leave empty to use default payload (request + response). Type {`{{`} for placeholder suggestions
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Submit Buttons */}
-        <div className="flex gap-3 pt-4 border-t">
-          <button
-            type="submit"
-            disabled={formData.response_scenarios.length === 0}
-            className="flex-1 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition font-medium"
-          >
-            {endpoint && endpoint.id ? 'Update Endpoint' : 'Create Endpoint'}
-          </button>
-          <button
-            type="button"
-            onClick={onCancel}
-            className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition font-medium"
-          >
-            Cancel
-          </button>
-        </div>
+            {/* Step 1 Navigation */}
+            <div className="flex gap-3 pt-4 border-t">
+              <button
+                type="button"
+                onClick={onCancel}
+                className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => goToStep(2)}
+                className="flex-1 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition font-medium flex items-center justify-center gap-2"
+              >
+                Next: Configure Scenarios
+                <span>→</span>
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* Step 2: Response Scenarios */}
+        {currentStep === 2 && (
+          <>
+            {/* Response Scenarios Section */}
+            <div className="space-y-4">
+              <h4 className="font-semibold text-gray-800 border-b pb-2">Response Scenarios</h4>
+              <p className="text-sm text-gray-600">Add multiple response scenarios and switch between them dynamically</p>
+              
+              {/* Add/Edit scenario */}
+              <div className={`p-4 rounded-lg border-2 space-y-3 ${
+                editingScenarioIndex !== null 
+                  ? 'bg-blue-50 border-blue-300' 
+                  : 'bg-gray-50 border-dashed border-gray-300'
+              }`}>
+                <h5 className="font-medium text-sm text-gray-700">
+                  {editingScenarioIndex !== null ? 'Edit Scenario' : 'Add New Scenario'}
+                </h5>
+                
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="col-span-2">
+                    <input
+                      type="text"
+                      value={currentScenario.name}
+                      onChange={(e) => setCurrentScenario({ ...currentScenario, name: e.target.value })}
+                      placeholder="Scenario name (e.g., Success, Rate Limited)"
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <input
+                      type="number"
+                      value={currentScenario.response_code}
+                      onChange={(e) => setCurrentScenario({ ...currentScenario, response_code: parseInt(e.target.value) })}
+                      placeholder="Status"
+                      min="100"
+                      max="599"
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">Delay (ms) - for 503/504 scenarios</label>
+                  <input
+                    type="number"
+                    value={currentScenario.delay_ms}
+                    onChange={(e) => setCurrentScenario({ ...currentScenario, delay_ms: parseInt(e.target.value) })}
+                    placeholder="0"
+                    min="0"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">
+                    Response Body (JSON) - Type <code className="bg-blue-100 text-blue-800 px-1 rounded">{`{{`}</code> for autocomplete!
+                  </label>
+                  <PlaceholderTextarea
+                    value={currentScenario.response_body}
+                    onChange={(e) => setCurrentScenario({ ...currentScenario, response_body: e.target.value })}
+                    placeholder='{"message": "Success", "id": "{{uuid}}"}'
+                    rows={6}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono"
+                  />
+                  <p className="text-xs text-blue-600 mt-1">
+                    💡 Tip: Type {`{{`} to see placeholder suggestions. Use ↑↓ to navigate, Enter to select
+                  </p>
+                </div>
+                
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={addScenario}
+                    disabled={!currentScenario.name}
+                    className={`flex-1 text-white px-4 py-2 rounded-lg disabled:bg-gray-400 disabled:cursor-not-allowed transition flex items-center justify-center gap-2 ${
+                      editingScenarioIndex !== null 
+                        ? 'bg-blue-600 hover:bg-blue-700' 
+                        : 'bg-green-600 hover:bg-green-700'
+                    }`}
+                  >
+                    {editingScenarioIndex !== null ? (
+                      <>
+                        <Check className="w-4 h-4" />
+                        Update Scenario
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="w-4 h-4" />
+                        Add Scenario
+                      </>
+                    )}
+                  </button>
+                  {editingScenarioIndex !== null && (
+                    <button
+                      type="button"
+                      onClick={cancelEditScenario}
+                      className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* List of scenarios */}
+              {formData.response_scenarios && formData.response_scenarios.length > 0 ? (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-gray-700">Configured Scenarios ({formData.response_scenarios.length}):</p>
+                  {formData.response_scenarios.map((scenario, index) => (
+                    <div key={index} className={`p-3 rounded-lg border transition ${
+                      editingScenarioIndex === index 
+                        ? 'bg-blue-50 border-blue-400 border-2' 
+                        : 'bg-white border-gray-300 hover:border-blue-400'
+                    }`}>
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-semibold text-sm">{scenario.name}</span>
+                            <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                              scenario.response_code >= 200 && scenario.response_code < 300 ? 'bg-green-100 text-green-800' :
+                              scenario.response_code >= 400 && scenario.response_code < 500 ? 'bg-orange-100 text-orange-800' :
+                              scenario.response_code >= 500 ? 'bg-red-100 text-red-800' :
+                              'bg-gray-100 text-gray-800'
+                            }`}>
+                              {scenario.response_code}
+                            </span>
+                            {scenario.delay_ms > 0 && (
+                              <span className="text-xs text-gray-500">⏱ {scenario.delay_ms}ms</span>
+                            )}
+                            {editingScenarioIndex === index && (
+                              <span className="text-xs text-blue-600 font-semibold">Editing...</span>
+                            )}
+                          </div>
+                          <pre className="text-xs text-gray-600 bg-gray-50 p-2 rounded mt-1 overflow-auto max-h-20">
+                            {scenario.response_body}
+                          </pre>
+                        </div>
+                        <div className="flex gap-1 ml-2">
+                          <button
+                            type="button"
+                            onClick={() => editScenario(index)}
+                            disabled={editingScenarioIndex !== null}
+                            className="text-blue-600 hover:text-blue-700 disabled:text-gray-400 disabled:cursor-not-allowed p-1"
+                            title="Edit scenario"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeScenario(index)}
+                            className="text-red-600 hover:text-red-700 p-1"
+                            title="Delete scenario"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+                  <p className="text-sm text-gray-500">No scenarios added yet</p>
+                  <p className="text-xs text-gray-400 mt-1">Add at least one scenario to create the endpoint</p>
+                </div>
+              )}
+            </div>
+
+            {/* Step 2 Navigation */}
+            <div className="flex gap-3 pt-4 border-t">
+              <button
+                type="button"
+                onClick={() => goToStep(1)}
+                className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition font-medium flex items-center gap-2"
+              >
+                <span>←</span>
+                Back to Configuration
+              </button>
+              <button
+                type="submit"
+                disabled={formData.response_scenarios.length === 0}
+                className="flex-1 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition font-medium"
+              >
+                {endpoint && endpoint.id ? 'Update Endpoint' : 'Create Endpoint'}
+              </button>
+            </div>
+          </>
+        )}
       </form>
     </div>
   )

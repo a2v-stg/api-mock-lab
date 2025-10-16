@@ -32,6 +32,9 @@
 - 📡 **Real-Time Monitoring** - WebSocket-powered live traffic display
 - 🔐 **User Authentication** - Secure login with multi-user support
 - 📊 **Two-Panel UI** - Request list + detailed view with collapsible sections
+- 🎲 **Dynamic Placeholders** - Auto-generate UUIDs, timestamps, random data in responses
+- 🔔 **Async Callbacks** - Send HTTP callbacks to external URLs with configurable delays
+- ✅ **Schema Validation** - Validate incoming requests against JSON schemas
 
 ### Developer Experience
 - 🎨 **No-Code Configuration** - All setup via beautiful web UI
@@ -219,6 +222,99 @@ curl http://localhost:8001/api/my-entity/users
 
 ### Dynamic Mock APIs
 - `GET|POST|PUT|DELETE|PATCH /api/{entity-path}/*` - Your mock endpoints!
+
+## 🎲 Advanced Features
+
+Mock-Lab includes three powerful features for realistic API mocking:
+
+### 1. Dynamic Placeholders
+
+Auto-generate dynamic values in responses instead of static data:
+
+```json
+{
+  "id": "{{uuid}}",
+  "user": "{{random_name}}",
+  "email": "{{random_email}}",
+  "created_at": "{{timestamp_iso}}",
+  "score": {{random_int:1:100}}
+}
+```
+
+**Supported placeholders:**
+- UUIDs: `{{uuid}}`, `{{guid}}`
+- Timestamps: `{{timestamp}}`, `{{timestamp_iso}}`, `{{date}}`, `{{time}}`
+- Random numbers: `{{random_int:min:max}}`, `{{random_float:min:max}}`
+- Random strings: `{{random_string:length}}`, `{{random_hex:length}}`
+- Random data: `{{random_name}}`, `{{random_email}}`, `{{random_username}}`
+- Random boolean: `{{random_bool}}`
+
+📚 **See [documentation/PLACEHOLDER_REFERENCE.md](documentation/PLACEHOLDER_REFERENCE.md) for complete list**
+
+### 2. Async Callbacks
+
+Send HTTP callbacks to external URLs after processing requests:
+
+```json
+{
+  "callback_enabled": true,
+  "callback_url": "https://your-app.com/webhook",
+  "callback_method": "POST",
+  "callback_delay_ms": 5000
+}
+```
+
+**Features:**
+- Static or dynamic callback URLs (extract from request)
+- Configurable delays (simulate async processing)
+- Supports all HTTP methods
+- Fire-and-forget (non-blocking)
+- Nested field extraction: `"meta.webhook.url"`
+
+**Perfect for:**
+- Testing webhook handlers
+- Simulating payment gateways
+- Order fulfillment notifications
+- Background job completion
+
+### 3. Request Schema Validation
+
+Validate incoming requests against JSON schemas:
+
+```json
+{
+  "schema_validation_enabled": true,
+  "request_schema": {
+    "type": "object",
+    "required": ["email", "username"],
+    "properties": {
+      "email": {"type": "string", "format": "email"},
+      "username": {"type": "string", "minLength": 3}
+    }
+  }
+}
+```
+
+**Features:**
+- JSON Schema Draft 7 validation
+- Detailed error messages
+- Format validation (email, uri, etc.)
+- Nested objects and arrays
+- Returns 400 with validation details for invalid requests
+
+📚 **See [documentation/USER_GUIDE.md](documentation/USER_GUIDE.md) for complete guide**
+
+### Try It Out
+
+Run the demo script to see all features in action:
+
+```bash
+# Start the backend
+python -m uvicorn backend.main:app --reload
+
+# In another terminal, run demo
+python examples_advanced_features.py
+```
 
 ## 🎯 Use Cases
 

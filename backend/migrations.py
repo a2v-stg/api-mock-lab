@@ -19,6 +19,9 @@ def run_migrations(engine):
         # Migration 2: Add is_admin to users table
         migrate_add_user_admin_field(engine)
         
+        # Migration 3: Add callback and schema validation fields
+        migrate_add_callback_and_schema_fields(engine)
+        
         logger.info("All migrations completed successfully")
     except Exception as e:
         logger.error(f"Migration failed: {e}")
@@ -123,3 +126,49 @@ def migrate_add_user_admin_field(engine):
             logger.info("✓ Added is_admin column")
         else:
             logger.info("✓ is_admin column already exists")
+
+
+def migrate_add_callback_and_schema_fields(engine):
+    """
+    Migration: Add callback and schema validation fields to mock_endpoints table
+    - Adds callback configuration fields
+    - Adds request schema validation fields
+    """
+    if not table_exists(engine, 'mock_endpoints'):
+        logger.info("Mock endpoints table doesn't exist yet, skipping migration")
+        return
+    
+    with engine.connect() as conn:
+        db_url = str(engine.url)
+        is_sqlite = 'sqlite' in db_url
+        
+        # Callback fields
+        callback_fields = [
+            ('callback_enabled', 'INTEGER DEFAULT 0 NOT NULL' if is_sqlite else 'BOOLEAN DEFAULT FALSE NOT NULL'),
+            ('callback_url', 'TEXT'),
+            ('callback_method', "VARCHAR DEFAULT 'POST' NOT NULL"),
+            ('callback_delay_ms', 'INTEGER DEFAULT 0 NOT NULL'),
+            ('callback_extract_from_request', 'INTEGER DEFAULT 0 NOT NULL' if is_sqlite else 'BOOLEAN DEFAULT FALSE NOT NULL'),
+            ('callback_extract_field', 'VARCHAR'),
+            ('callback_payload', 'TEXT'),
+        ]
+        
+        # Schema validation fields
+        schema_fields = [
+            ('request_schema', 'TEXT'),
+            ('schema_validation_enabled', 'INTEGER DEFAULT 0 NOT NULL' if is_sqlite else 'BOOLEAN DEFAULT FALSE NOT NULL'),
+        ]
+        
+        all_fields = callback_fields + schema_fields
+        
+        for field_name, field_type in all_fields:
+            if not column_exists(engine, 'mock_endpoints', field_name):
+                logger.info(f"Adding {field_name} column to mock_endpoints table")
+                conn.execute(text(f"""
+                    ALTER TABLE mock_endpoints 
+                    ADD COLUMN {field_name} {field_type}
+                """))
+                conn.commit()
+                logger.info(f"✓ Added {field_name} column")
+            else:
+                logger.info(f"✓ {field_name} column already exists")

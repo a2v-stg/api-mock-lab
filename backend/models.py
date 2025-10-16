@@ -60,6 +60,17 @@ class MockEndpoint(Base):
     # New fields for multi-response scenarios
     response_scenarios = Column(Text, default="[]")  # JSON array of response configs
     active_scenario_index = Column(Integer, default=0)  # Which scenario is currently active
+    # Callback configuration
+    callback_enabled = Column(Boolean, default=False)
+    callback_url = Column(String, nullable=True)  # Static callback URL
+    callback_method = Column(String, default="POST")  # HTTP method for callback
+    callback_delay_ms = Column(Integer, default=0)  # Delay before sending callback
+    callback_extract_from_request = Column(Boolean, default=False)  # Extract callback URL from request
+    callback_extract_field = Column(String, nullable=True)  # JSON path to extract callback URL (e.g., "callbackUrl" or "meta.callback")
+    callback_payload = Column(Text, nullable=True)  # Custom callback payload (JSON string, supports placeholders)
+    # Schema validation
+    request_schema = Column(Text, nullable=True)  # JSON Schema for request validation
+    schema_validation_enabled = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     

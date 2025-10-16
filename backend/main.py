@@ -19,6 +19,9 @@ from backend.schemas import (
 )
 from backend.auth import hash_password, verify_password, create_access_token, get_current_user
 from backend.migrations import run_migrations
+from backend.placeholders import replace_placeholders
+from backend.schema_validator import validate_request as validate_schema, is_valid_schema
+from backend.callbacks import schedule_callback, extract_callback_url
 import logging
 
 # Configure logging
@@ -453,6 +456,28 @@ def create_mock_endpoint(
     if endpoint.response_scenarios:
         scenarios_json = json.dumps([s.model_dump() for s in endpoint.response_scenarios])
     
+    # Validate request schema if provided
+    if endpoint.request_schema:
+        is_valid, error_msg = is_valid_schema(endpoint.request_schema)
+        if not is_valid:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid request schema: {error_msg}"
+            )
+    
+    # Validate callback configuration
+    if endpoint.callback_enabled:
+        if not endpoint.callback_extract_from_request and not endpoint.callback_url:
+            raise HTTPException(
+                status_code=400,
+                detail="Callback enabled but no callback URL or extraction field configured"
+            )
+        if endpoint.callback_extract_from_request and not endpoint.callback_extract_field:
+            raise HTTPException(
+                status_code=400,
+                detail="Callback extraction enabled but no field path specified"
+            )
+    
     db_endpoint = MockEndpoint(
         entity_id=entity_id,
         name=endpoint.name,
@@ -464,7 +489,18 @@ def create_mock_endpoint(
         delay_ms=endpoint.delay_ms,
         is_active=endpoint.is_active,
         response_scenarios=scenarios_json,
-        active_scenario_index=endpoint.active_scenario_index
+        active_scenario_index=endpoint.active_scenario_index,
+        # Callback fields
+        callback_enabled=endpoint.callback_enabled,
+        callback_url=endpoint.callback_url,
+        callback_method=endpoint.callback_method.upper() if endpoint.callback_method else "POST",
+        callback_delay_ms=endpoint.callback_delay_ms,
+        callback_extract_from_request=endpoint.callback_extract_from_request,
+        callback_extract_field=endpoint.callback_extract_field,
+        callback_payload=endpoint.callback_payload,
+        # Schema validation fields
+        request_schema=endpoint.request_schema,
+        schema_validation_enabled=endpoint.schema_validation_enabled
     )
     db.add(db_endpoint)
     db.commit()
@@ -553,9 +589,40 @@ def update_mock_endpoint(
                 scenarios_list.append(s)  # Already a dict
         update_data["response_scenarios"] = json.dumps(scenarios_list)
     
+    # Validate request schema if provided
+    if "request_schema" in update_data and update_data["request_schema"]:
+        is_valid, error_msg = is_valid_schema(update_data["request_schema"])
+        if not is_valid:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid request schema: {error_msg}"
+            )
+    
+    # Validate callback configuration if being updated
+    callback_enabled = update_data.get("callback_enabled", db_endpoint.callback_enabled)
+    if callback_enabled:
+        callback_url = update_data.get("callback_url", db_endpoint.callback_url)
+        callback_extract = update_data.get("callback_extract_from_request", db_endpoint.callback_extract_from_request)
+        callback_field = update_data.get("callback_extract_field", db_endpoint.callback_extract_field)
+        
+        if not callback_extract and not callback_url:
+            raise HTTPException(
+                status_code=400,
+                detail="Callback enabled but no callback URL or extraction field configured"
+            )
+        if callback_extract and not callback_field:
+            raise HTTPException(
+                status_code=400,
+                detail="Callback extraction enabled but no field path specified"
+            )
+    
     # Convert method to uppercase if present
     if "method" in update_data:
         update_data["method"] = update_data["method"].upper()
+    
+    # Convert callback_method to uppercase if present
+    if "callback_method" in update_data and update_data["callback_method"]:
+        update_data["callback_method"] = update_data["callback_method"].upper()
     
     for key, value in update_data.items():
         setattr(db_endpoint, key, value)
@@ -729,9 +796,16 @@ async def handle_mock_request(request: Request, db: Session):
     
     # Prepare request data for logging
     request_body = None
+    request_data = None
     try:
         request_body = await request.body()
         request_body = request_body.decode('utf-8') if request_body else None
+        # Try to parse as JSON
+        if request_body:
+            try:
+                request_data = json.loads(request_body)
+            except:
+                pass
     except:
         pass
     
@@ -779,6 +853,89 @@ async def handle_mock_request(request: Request, db: Session):
             content={"error": "No matching mock endpoint found"}
         )
     
+    # ==================== FEATURE 1: Schema Validation ====================
+    # Validate request schema if enabled
+    if mock_endpoint.schema_validation_enabled and mock_endpoint.request_schema:
+        if request_data is None:
+            # Schema validation requires JSON data
+            error_response = {"error": "Schema validation enabled but request body is not valid JSON"}
+            log = RequestLog(
+                entity_id=entity.id,
+                mock_endpoint_id=mock_endpoint.id,
+                method=method,
+                path=endpoint_path,
+                request_headers=json.dumps(request_headers),
+                request_body=request_body,
+                query_params=json.dumps(query_params),
+                response_code=400,
+                response_body=json.dumps(error_response),
+                timestamp=datetime.utcnow()
+            )
+            db.add(log)
+            db.commit()
+            db.refresh(log)
+            
+            asyncio.create_task(manager.broadcast_to_entity(entity.id, {
+                "type": "new_log",
+                "log": {
+                    "id": log.id,
+                    "entity_id": log.entity_id,
+                    "mock_endpoint_id": log.mock_endpoint_id,
+                    "method": log.method,
+                    "path": log.path,
+                    "request_headers": log.request_headers,
+                    "request_body": log.request_body,
+                    "query_params": log.query_params,
+                    "response_code": log.response_code,
+                    "response_body": log.response_body,
+                    "timestamp": log.timestamp.replace(tzinfo=timezone.utc).isoformat()
+                }
+            }))
+            
+            return JSONResponse(status_code=400, content=error_response)
+        
+        # Validate against schema
+        is_valid, error_message = validate_schema(mock_endpoint.request_schema, request_data)
+        if not is_valid:
+            error_response = {
+                "error": "Request validation failed",
+                "details": error_message
+            }
+            log = RequestLog(
+                entity_id=entity.id,
+                mock_endpoint_id=mock_endpoint.id,
+                method=method,
+                path=endpoint_path,
+                request_headers=json.dumps(request_headers),
+                request_body=request_body,
+                query_params=json.dumps(query_params),
+                response_code=400,
+                response_body=json.dumps(error_response),
+                timestamp=datetime.utcnow()
+            )
+            db.add(log)
+            db.commit()
+            db.refresh(log)
+            
+            asyncio.create_task(manager.broadcast_to_entity(entity.id, {
+                "type": "new_log",
+                "log": {
+                    "id": log.id,
+                    "entity_id": log.entity_id,
+                    "mock_endpoint_id": log.mock_endpoint_id,
+                    "method": log.method,
+                    "path": log.path,
+                    "request_headers": log.request_headers,
+                    "request_body": log.request_body,
+                    "query_params": log.query_params,
+                    "response_code": log.response_code,
+                    "response_body": log.response_body,
+                    "timestamp": log.timestamp.replace(tzinfo=timezone.utc).isoformat()
+                }
+            }))
+            
+            return JSONResponse(status_code=400, content=error_response)
+    
     # Determine response based on scenarios or legacy fields
     response_code = mock_endpoint.response_code
     response_body_str = mock_endpoint.response_body
@@ -793,6 +950,10 @@ async def handle_mock_request(request: Request, db: Session):
         response_body_str = active_scenario["response_body"]
         response_headers_dict = active_scenario.get("response_headers", {})
         delay_ms = active_scenario.get("delay_ms", 0)  # Use scenario-specific delay
+    
+    # ==================== FEATURE 2: Placeholder Replacement ====================
+    # Replace placeholders in response body
+    response_body_str = replace_placeholders(response_body_str)
     
     # Apply delay if configured
     if delay_ms > 0:
@@ -838,6 +999,62 @@ async def handle_mock_request(request: Request, db: Session):
             "timestamp": log.timestamp.replace(tzinfo=timezone.utc).isoformat()
         }
     }))
+    
+    # ==================== FEATURE 3: Async Callbacks ====================
+    # Send async callback if configured
+    if mock_endpoint.callback_enabled:
+        callback_url = None
+        
+        # Extract callback URL from request if configured
+        if mock_endpoint.callback_extract_from_request and mock_endpoint.callback_extract_field:
+            if request_data:
+                callback_url = extract_callback_url(request_data, mock_endpoint.callback_extract_field)
+                if not callback_url:
+                    logger.warning(
+                        f"Failed to extract callback URL from field: {mock_endpoint.callback_extract_field}"
+                    )
+        
+        # Use static callback URL if extraction failed or not configured
+        if not callback_url:
+            callback_url = mock_endpoint.callback_url
+        
+        # Send callback if URL is available
+        if callback_url:
+            # Prepare callback payload
+            if mock_endpoint.callback_payload:
+                # Use custom callback payload with placeholder replacement
+                callback_payload_str = replace_placeholders(mock_endpoint.callback_payload)
+                try:
+                    callback_payload = json.loads(callback_payload_str)
+                except json.JSONDecodeError:
+                    # If custom payload is not valid JSON, send as-is in a wrapper
+                    callback_payload = {"payload": callback_payload_str}
+                    logger.warning(f"Custom callback payload is not valid JSON, wrapping it")
+            else:
+                # Default payload (send back the response)
+                callback_payload = {
+                    "endpoint": {
+                        "method": method,
+                        "path": full_path
+                    },
+                    "request": request_data if request_data else {},
+                    "response": response_body_json if isinstance(response_body_json, dict) else {"data": response_body_json},
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
+            
+            # Schedule the callback with configured delay
+            schedule_callback(
+                url=callback_url,
+                method=mock_endpoint.callback_method,
+                payload=callback_payload,
+                headers=None,  # Use default headers
+                delay_ms=mock_endpoint.callback_delay_ms
+            )
+            logger.info(
+                f"Callback scheduled for {callback_url} with delay {mock_endpoint.callback_delay_ms}ms"
+            )
+        else:
+            logger.warning("Callback enabled but no callback URL available")
     
     # Return mock response
     return JSONResponse(

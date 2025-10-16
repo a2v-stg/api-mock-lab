@@ -71,6 +71,17 @@ class MockEndpointCreate(BaseModel):
     is_active: bool = True
     response_scenarios: Optional[List[ResponseScenario]] = []
     active_scenario_index: int = 0
+    # Callback configuration
+    callback_enabled: bool = False
+    callback_url: Optional[str] = None
+    callback_method: str = "POST"
+    callback_delay_ms: int = 0
+    callback_extract_from_request: bool = False
+    callback_extract_field: Optional[str] = None
+    callback_payload: Optional[str] = None  # Custom callback payload (JSON string)
+    # Schema validation
+    request_schema: Optional[str] = None  # JSON Schema as string
+    schema_validation_enabled: bool = False
 
 class MockEndpointUpdate(BaseModel):
     name: Optional[str] = None
@@ -83,6 +94,17 @@ class MockEndpointUpdate(BaseModel):
     is_active: Optional[bool] = None
     response_scenarios: Optional[List[ResponseScenario]] = None
     active_scenario_index: Optional[int] = None
+    # Callback configuration
+    callback_enabled: Optional[bool] = None
+    callback_url: Optional[str] = None
+    callback_method: Optional[str] = None
+    callback_delay_ms: Optional[int] = None
+    callback_extract_from_request: Optional[bool] = None
+    callback_extract_field: Optional[str] = None
+    callback_payload: Optional[str] = None
+    # Schema validation
+    request_schema: Optional[str] = None
+    schema_validation_enabled: Optional[bool] = None
 
 class MockEndpointResponse(BaseModel):
     id: int
@@ -97,6 +119,15 @@ class MockEndpointResponse(BaseModel):
     is_active: bool
     response_scenarios: str  # JSON string
     active_scenario_index: int
+    callback_enabled: bool
+    callback_url: Optional[str]
+    callback_method: str
+    callback_delay_ms: int
+    callback_extract_from_request: bool
+    callback_extract_field: Optional[str]
+    callback_payload: Optional[str]
+    request_schema: Optional[str]
+    schema_validation_enabled: bool
     created_at: datetime
     updated_at: datetime
     
