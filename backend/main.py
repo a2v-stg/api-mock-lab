@@ -6,7 +6,8 @@ from typing import List, Optional, Dict, Set
 import json
 import asyncio
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+import secrets
 
 from backend.database import engine, get_db, Base
 from backend.models import User, Entity, MockEndpoint, RequestLog
@@ -15,7 +16,8 @@ from backend.schemas import (
     EntityCreate, EntityUpdate, EntityResponse, EntityShareRequest,
     MockEndpointCreate, MockEndpointUpdate, MockEndpointResponse,
     RequestLogResponse,
-    UserStatsResponse, CollectionStatsResponse, DashboardStatsResponse
+    UserStatsResponse, CollectionStatsResponse, DashboardStatsResponse,
+    PasswordResetInitiateResponse, PasswordResetCompleteRequest, AdminRoleUpdateResponse
 )
 from backend.auth import hash_password, verify_password, create_access_token, get_current_user
 from backend.migrations import run_migrations
@@ -230,6 +232,73 @@ def list_users(
     """List all users. Requires authentication. Used for sharing entities."""
     users = db.query(User).all()
     return users
+
+# ==================== Admin: User Management ====================
+
+@app.post("/admin/users/{user_id}/make-admin", response_model=AdminRoleUpdateResponse, tags=["Admin Dashboard"])
+def make_user_admin(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_dependency)
+):
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    target = db.query(User).filter(User.id == user_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    target.is_admin = True
+    db.commit()
+    return AdminRoleUpdateResponse(user_id=target.id, is_admin=True)
+
+@app.post("/admin/users/{user_id}/remove-admin", response_model=AdminRoleUpdateResponse, tags=["Admin Dashboard"])
+def remove_user_admin(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_dependency)
+):
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    target = db.query(User).filter(User.id == user_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    target.is_admin = False
+    db.commit()
+    return AdminRoleUpdateResponse(user_id=target.id, is_admin=False)
+
+@app.post("/admin/users/{user_id}/reset-password", response_model=PasswordResetInitiateResponse, tags=["Admin Dashboard"])
+def admin_reset_password(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_dependency)
+):
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    target = db.query(User).filter(User.id == user_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    # Generate reset token valid for 24 hours
+    token = secrets.token_urlsafe(32)
+    expires_at = datetime.utcnow() + timedelta(hours=24)
+    target.password_reset_token = token
+    target.password_reset_token_expires = expires_at
+    db.commit()
+    return PasswordResetInitiateResponse(user_id=target.id, reset_token=token, expires_at=expires_at)
+
+# ==================== Auth: Complete Password Reset ====================
+
+@app.post("/auth/reset-password", tags=["Auth"])
+def complete_password_reset(payload: PasswordResetCompleteRequest, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.password_reset_token == payload.token).first()
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid reset token")
+    if not user.password_reset_token_expires or user.password_reset_token_expires < datetime.utcnow():
+        raise HTTPException(status_code=400, detail="Reset token expired")
+    # Set new password and clear token
+    user.hashed_password = hash_password(payload.new_password)
+    user.password_reset_token = None
+    user.password_reset_token_expires = None
+    db.commit()
+    return {"message": "Password has been reset successfully"}
 
 # ==================== Entity Management ====================
 

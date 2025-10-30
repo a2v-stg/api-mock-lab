@@ -22,6 +22,9 @@ class User(Base):
     hashed_password = Column(String)
     is_admin = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+    # Password reset fields
+    password_reset_token = Column(String, nullable=True)
+    password_reset_token_expires = Column(DateTime, nullable=True)
     
     # Many-to-many relationship with entities
     entities = relationship("Entity", secondary=user_entity_association, back_populates="users")

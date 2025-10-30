@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, createContext, useContext } from 'react'
-import { BrowserRouter as Router, Routes, Route, Link, useParams, useNavigate, Navigate } from 'react-router-dom'
-import { Server, Plus, Eye, Settings, Activity, Trash2, Edit, Copy, Check, Menu, X, Radio, LogIn, LogOut, Beaker, FlaskConical, Users, Share2, Globe, Lock, BarChart3, Shield, Zap } from 'lucide-react'
+import { BrowserRouter as Router, Routes, Route, Link, useParams, useNavigate, Navigate, useLocation } from 'react-router-dom'
+import { Server, Plus, Eye, EyeOff, Settings, Activity, Trash2, Edit, Copy, Check, Menu, X, Radio, LogIn, LogOut, Beaker, FlaskConical, Users, Share2, Globe, Lock, BarChart3, Shield, Zap } from 'lucide-react'
 import axios from 'axios'
 
 // Placeholder definitions for autocomplete
@@ -79,6 +79,120 @@ function AuthProvider({ children }) {
     <AuthContext.Provider value={{ user, login, logout, loading }}>
       {children}
     </AuthContext.Provider>
+  )
+}
+// Reset Password Page
+function useQuery() {
+  const { search } = useLocation()
+  return React.useMemo(() => new URLSearchParams(search), [search])
+}
+
+function ResetPasswordPage() {
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [showNew, setShowNew] = useState(false)
+  const [showConfirm, setShowConfirm] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [message, setMessage] = useState(null)
+  const [error, setError] = useState(null)
+  const navigate = useNavigate()
+  const query = useQuery()
+  const token = query.get('token') || ''
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setError(null)
+    setMessage(null)
+    if (!token) {
+      setError('Missing reset token in URL')
+      return
+    }
+    if (!newPassword || newPassword.length < 8) {
+      setError('Password must be at least 8 characters')
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      setError('Passwords do not match')
+      return
+    }
+    setSubmitting(true)
+    try {
+      await api.post('/auth/reset-password', { token, new_password: newPassword })
+      setMessage('Password has been reset. You can now log in.')
+      setTimeout(() => navigate('/login'), 1200)
+    } catch (e) {
+      setError(e.response?.data?.detail || 'Failed to reset password')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-100 flex flex-col">
+      <Navbar showNavLinks={false} />
+      <div className="flex-1 flex items-center justify-center px-4 py-12">
+        <div className="w-full max-w-md bg-white rounded-lg shadow-md p-6">
+          <h1 className="text-2xl font-bold text-gray-800 mb-2">Reset Password</h1>
+          <p className="text-sm text-gray-600 mb-6">Set a new password for your account.</p>
+          {!token && (
+            <div className="mb-4 text-sm text-red-600">Missing or invalid reset token.</div>
+          )}
+          {message && <div className="mb-4 text-sm text-green-600">{message}</div>}
+          {error && <div className="mb-4 text-sm text-red-600">{error}</div>}
+          <form onSubmit={handleSubmit}>
+            <label className="block mb-3">
+              <span className="block text-sm text-gray-700 mb-1">New Password</span>
+              <div className="relative">
+                <input
+                  type={showNew ? 'text' : 'password'}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="w-full pr-12 px-3 py-2 border border-gray-300 rounded-md"
+                  placeholder="Enter new password"
+                  disabled={!token || submitting}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowNew(!showNew)}
+                  className="absolute inset-y-0 right-0 px-3 flex items-center text-gray-500 hover:text-gray-700"
+                  aria-label={showNew ? 'Hide password' : 'Show password'}
+                >
+                  {showNew ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                </button>
+              </div>
+            </label>
+            <label className="block mb-6">
+              <span className="block text-sm text-gray-700 mb-1">Confirm Password</span>
+              <div className="relative">
+                <input
+                  type={showConfirm ? 'text' : 'password'}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="w-full pr-12 px-3 py-2 border border-gray-300 rounded-md"
+                  placeholder="Re-enter new password"
+                  disabled={!token || submitting}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirm(!showConfirm)}
+                  className="absolute inset-y-0 right-0 px-3 flex items-center text-gray-500 hover:text-gray-700"
+                  aria-label={showConfirm ? 'Hide password' : 'Show password'}
+                >
+                  {showConfirm ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                </button>
+              </div>
+            </label>
+            <button
+              type="submit"
+              disabled={!token || submitting}
+              className={`w-full px-4 py-2 rounded-md text-white ${submitting ? 'bg-purple-400' : 'bg-purple-600 hover:bg-purple-700'}`}
+            >
+              {submitting ? 'Resetting...' : 'Reset Password'}
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -501,6 +615,7 @@ function LoginPage() {
   const [credentials, setCredentials] = useState({ username: '', password: '' })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [showPassword, setShowPassword] = useState(false)
   const navigate = useNavigate()
   const auth = useAuth()
 
@@ -555,14 +670,24 @@ function LoginPage() {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Password</label>
-              <input
-                type="password"
-                value={credentials.password}
-                onChange={(e) => setCredentials({ ...credentials, password: e.target.value })}
-                required
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Enter your password"
-              />
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={credentials.password}
+                  onChange={(e) => setCredentials({ ...credentials, password: e.target.value })}
+                  required
+                  className="w-full pr-12 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Enter your password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute inset-y-0 right-0 px-3 flex items-center text-gray-500 hover:text-gray-700"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                </button>
+              </div>
             </div>
 
             <button
@@ -2591,6 +2716,8 @@ function AdminDashboard() {
   const [collections, setCollections] = useState([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('overview') // overview, users, collections
+  const [resetModalOpen, setResetModalOpen] = useState(false)
+  const [resetInfo, setResetInfo] = useState(null) // { token, expires_at, resetUrl, username }
   const navigate = useNavigate()
   const auth = useAuth()
 
@@ -2804,6 +2931,7 @@ function AdminDashboard() {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Endpoints</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Requests</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Joined</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
@@ -2840,6 +2968,55 @@ function AdminDashboard() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                         {new Date(user.created_at).toLocaleDateString()}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        <div className="flex gap-2">
+                          {user.is_admin ? (
+                            <button
+                              className="px-3 py-1 rounded border border-gray-300 hover:border-gray-400 text-gray-700"
+                              onClick={async () => {
+                                try {
+                                  await api.post(`/admin/users/${user.id}/remove-admin`)
+                                  setUsers((prev) => prev.map(u => u.id === user.id ? { ...u, is_admin: false } : u))
+                                } catch (e) {
+                                  alert('Failed to remove admin: ' + (e.response?.data?.detail || e.message))
+                                }
+                              }}
+                            >
+                              Remove Admin
+                            </button>
+                          ) : (
+                            <button
+                              className="px-3 py-1 rounded bg-yellow-600 text-white hover:bg-yellow-700"
+                              onClick={async () => {
+                                try {
+                                  await api.post(`/admin/users/${user.id}/make-admin`)
+                                  setUsers((prev) => prev.map(u => u.id === user.id ? { ...u, is_admin: true } : u))
+                                } catch (e) {
+                                  alert('Failed to make admin: ' + (e.response?.data?.detail || e.message))
+                                }
+                              }}
+                            >
+                              Make Admin
+                            </button>
+                          )}
+                          <button
+                            className="px-3 py-1 rounded bg-purple-600 text-white hover:bg-purple-700"
+                            onClick={async () => {
+                              try {
+                                const res = await api.post(`/admin/users/${user.id}/reset-password`)
+                                const { reset_token, expires_at } = res.data
+                                const resetUrl = `${window.location.origin}/reset-password?token=${encodeURIComponent(reset_token)}`
+                                setResetInfo({ token: reset_token, expires_at, resetUrl, username: user.username })
+                                setResetModalOpen(true)
+                              } catch (e) {
+                                alert('Failed to reset password: ' + (e.response?.data?.detail || e.message))
+                              }
+                            }}
+                          >
+                            Reset Password
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -2913,6 +3090,69 @@ function AdminDashboard() {
             </div>
           </div>
         )}
+
+        {resetModalOpen && resetInfo && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center">
+            <div className="absolute inset-0 bg-black/40" onClick={() => setResetModalOpen(false)} />
+            <div className="relative bg-white w-full max-w-lg mx-4 rounded-lg shadow-xl p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xl font-semibold text-gray-800">Password Reset Link</h3>
+                <button className="text-gray-500 hover:text-gray-700" onClick={() => setResetModalOpen(false)}>
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <div className="text-sm text-gray-600 mb-1">User</div>
+                  <div className="font-medium text-gray-900">{resetInfo.username}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-gray-600 mb-1">Reset URL</div>
+                  <div className="flex gap-2">
+                    <input
+                      readOnly
+                      value={resetInfo.resetUrl}
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-800 bg-gray-50"
+                    />
+                    <button
+                      className="px-3 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 text-sm"
+                      onClick={async () => { try { await navigator.clipboard.writeText(resetInfo.resetUrl) } catch {} }}
+                    >
+                      Copy
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <div className="text-sm text-gray-600 mb-1">Token</div>
+                  <div className="flex gap-2">
+                    <input
+                      readOnly
+                      value={resetInfo.token}
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-800 bg-gray-50"
+                    />
+                    <button
+                      className="px-3 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 text-sm"
+                      onClick={async () => { try { await navigator.clipboard.writeText(resetInfo.token) } catch {} }}
+                    >
+                      Copy
+                    </button>
+                  </div>
+                </div>
+                <div className="text-sm text-gray-600">
+                  Expires: {new Date(resetInfo.expires_at).toLocaleString()}
+                </div>
+              </div>
+              <div className="mt-6 flex justify-end gap-2">
+                <button
+                  className="px-4 py-2 rounded-md border border-gray-300 text-gray-700 hover:border-gray-400"
+                  onClick={() => setResetModalOpen(false)}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -2951,6 +3191,7 @@ function App() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
           
           {/* Redirects for old /auth/* URLs */}
           <Route path="/auth/login" element={<Navigate to="/login" replace />} />

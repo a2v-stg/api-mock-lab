@@ -22,6 +22,9 @@ def run_migrations(engine):
         # Migration 3: Add callback and schema validation fields
         migrate_add_callback_and_schema_fields(engine)
         
+        # Migration 4: Add user password reset fields
+        migrate_add_user_password_reset_fields(engine)
+        
         logger.info("All migrations completed successfully")
     except Exception as e:
         logger.error(f"Migration failed: {e}")
@@ -172,3 +175,42 @@ def migrate_add_callback_and_schema_fields(engine):
                 logger.info(f"✓ Added {field_name} column")
             else:
                 logger.info(f"✓ {field_name} column already exists")
+
+
+def migrate_add_user_password_reset_fields(engine):
+    """
+    Migration: Add password reset fields to users table
+    - Adds password_reset_token (nullable)
+    - Adds password_reset_token_expires (nullable)
+    """
+    if not table_exists(engine, 'users'):
+        logger.info("Users table doesn't exist yet, skipping migration")
+        return
+    
+    with engine.connect() as conn:
+        db_url = str(engine.url)
+        is_sqlite = 'sqlite' in db_url
+        # password_reset_token
+        if not column_exists(engine, 'users', 'password_reset_token'):
+            logger.info("Adding password_reset_token column to users table")
+            conn.execute(text("""
+                ALTER TABLE users 
+                ADD COLUMN password_reset_token VARCHAR
+            """))
+            conn.commit()
+            logger.info("✓ Added password_reset_token column")
+        else:
+            logger.info("✓ password_reset_token column already exists")
+        
+        # password_reset_token_expires
+        if not column_exists(engine, 'users', 'password_reset_token_expires'):
+            logger.info("Adding password_reset_token_expires column to users table")
+            expires_type = 'TEXT' if is_sqlite else 'TIMESTAMP'
+            conn.execute(text(f"""
+                ALTER TABLE users 
+                ADD COLUMN password_reset_token_expires {expires_type}
+            """))
+            conn.commit()
+            logger.info("✓ Added password_reset_token_expires column")
+        else:
+            logger.info("✓ password_reset_token_expires column already exists")

@@ -27,6 +27,21 @@ class LoginResponse(BaseModel):
     token: str  # Simple token for now
     message: str
 
+# Password Reset Schemas
+class PasswordResetInitiateResponse(BaseModel):
+    user_id: int
+    reset_token: str
+    expires_at: datetime
+
+class PasswordResetCompleteRequest(BaseModel):
+    token: str
+    new_password: str
+
+# Admin User Role Schemas
+class AdminRoleUpdateResponse(BaseModel):
+    user_id: int
+    is_admin: bool
+
 # Response Scenario Schema
 class ResponseScenario(BaseModel):
     name: str  # e.g., "Success", "Rate Limited", "Server Error"
