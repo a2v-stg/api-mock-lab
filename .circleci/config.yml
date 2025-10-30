@@ -1,4 +1,5 @@
 version: 2.1
+
 orbs:
   aws-cli: circleci/aws-cli@3.1.5
   slack: circleci/slack@4.13.3
@@ -10,10 +11,13 @@ commands:
       - run:
           name: Building Docker image
           command: |
-            cd deploy/docker && make build \
-              AWS_ACCOUNT_ID=${AWS_ACCOUNT_ID} \
-              AWS_REGION=${AWS_REGION} \
-              IMAGE_REPO_NAME=${IMAGE_REPO_NAME}
+            AWS_ACCOUNT_ID=${AWS_ACCOUNT_ID} \
+            AWS_REGION=${AWS_REGION} \
+            IMAGE_REPO_NAME=${IMAGE_REPO_NAME} \
+            cd deploy/docker && \
+            make build
+
+          
           
 
   push:
