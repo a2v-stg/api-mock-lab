@@ -1,0 +1,131 @@
+version: 2.1
+
+orbs:
+  aws-cli: circleci/aws-cli@3.1.5
+  slack: circleci/slack@4.13.3
+  queue: thesummitgrp/queue@1.0.1
+
+commands:
+  build:
+    steps:
+      - run:
+          name: Building Docker image
+          command: |
+            echo "GH_TOKEN=${GH_TOKEN}" >> ${CIRCLE_WORKING_DIRECTORY}/.env
+            echo "LC_GH_TOKEN=${LC_GH_TOKEN}" >> ${CIRCLE_WORKING_DIRECTORY}/.env
+            echo "SLACK_CHANNEL_ID=${SLACK_CHANNEL_ID}" >> ${CIRCLE_WORKING_DIRECTORY}/.env
+            echo "AWS_ACCOUNT_ID=${AWS_ACCOUNT_ID}" >> ${CIRCLE_WORKING_DIRECTORY}/.env
+            echo "AWS_REGION=${AWS_REGION}" >> ${CIRCLE_WORKING_DIRECTORY}/.env
+            echo "IMAGE_REPO_NAME=${IMAGE_REPO_NAME}" >> ${CIRCLE_WORKING_DIRECTORY}/.env
+            DOCKER_BUILDKIT=1 docker build \
+              --secret id=dot-env,src=${CIRCLE_WORKING_DIRECTORY}/.env \
+              --build-arg CODEBUILD_START_TIME="<<pipeline.trigger_parameters.circleci.event_time>>" \
+              --build-arg CODEBUILD_RESOLVED_SOURCE_VERSION=${CIRCLE_SHA1} \
+              --build-arg CODEBUILD_SOURCE_VERSION=${CIRCLE_SHA1} \
+              --build-arg CODEBUILD_BUILD_NUMBER=${IMAGE_TAG_BUILD_NUMBER} \
+              --build-arg CODEBUILD_WEBHOOK_HEAD_REF=${CIRCLE_BRANCH} \
+              -t ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${IMAGE_REPO_NAME} \
+              -f deploy/docker/Dockerfile.monolith .
+  push:
+    parameters:
+      image-tag-prefix:
+        type: string
+    steps:
+      - run:
+          name: Pushing Docker image
+          command: |
+            docker tag ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${IMAGE_REPO_NAME} ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${IMAGE_REPO_NAME}:${IMAGE_TAG_LATEST}
+            docker tag ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${IMAGE_REPO_NAME} ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${IMAGE_REPO_NAME}:${IMAGE_TAG_BUILD_NUMBER}
+            docker tag ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${IMAGE_REPO_NAME} ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${IMAGE_REPO_NAME}:${CIRCLE_SHA1}
+            docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${IMAGE_REPO_NAME}:${IMAGE_TAG_LATEST}
+            docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${IMAGE_REPO_NAME}:${IMAGE_TAG_BUILD_NUMBER}
+            docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${IMAGE_REPO_NAME}:${CIRCLE_SHA1}
+
+jobs:
+  docker-build-and-push:
+    docker:
+      - image: cimg/base:2024.02
+    resource_class: medium
+    parameters:
+      image-tag-prefix:
+        type: string
+    environment:
+      AWS_ACCOUNT_ID: '442042548180' 
+      AWS_REGION: us-east-2
+      IMAGE_REPO_NAME: stgcore-app-api-mock-lab   
+      CIRCLE_REPOSITORY_URL: << pipeline.project.git_url >>
+    steps:
+      - setup_remote_docker:
+          docker_layer_caching: true
+      - aws-cli/setup:
+          role-arn: "arn:aws:iam::${AWS_ACCOUNT_ID}:role/circleci-${AWS_REGION}"
+          profile-name: "OIDC-PROFILE"
+      - checkout
+      - run:
+          name: Supersede older pending workflows
+          command: bash .circleci/supersede-queue.sh
+      - queue/until_front_of_line:
+          limit-branch-name: ${CIRCLE_BRANCH}
+          max-wait-time: '60'
+          my-pipeline: <<pipeline.number>>
+      - run:
+          name: Initialize and update submodules
+          command: |
+            git config --global credential.helper 'store --file=$HOME/.git-credentials'
+            echo "https://$GH_TOKEN:@github.com" > $HOME/.git-credentials
+            git submodule update --init --recursive --depth=1
+      - run:
+          name: Docker Registry Login
+          command: |
+            echo $(aws ecr get-login-password --region ${AWS_REGION} --profile OIDC-PROFILE) | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+
+            COMMIT_AUTHOR_EMAIL=$(git log --format='%ae' ${CIRCLE_SHA1}^!)
+            COMMIT_SLACK_USERNAME=${COMMIT_AUTHOR_EMAIL%%@*}
+            echo "export COMMIT_AUTHOR_EMAIL=$COMMIT_AUTHOR_EMAIL" >> $BASH_ENV
+            echo "export COMMIT_MESSAGE=\"$(git show --pretty=format:%B --no-patch | tr -d '\r' | sed 's/"/\\"/g')\"" >> $BASH_ENV
+            echo "export COMMIT_SLACK_USERNAME=$COMMIT_SLACK_USERNAME" >> $BASH_ENV
+
+            IMAGE_TAG_BUILD_NUMBER=${CIRCLE_BUILD_NUM}
+            IMAGE_TAG_LATEST="latest"
+            echo "export IMAGE_TAG_BUILD_NUMBER=$IMAGE_TAG_BUILD_NUMBER" >> $BASH_ENV
+            echo "export IMAGE_TAG_LATEST=$IMAGE_TAG_LATEST" >> $BASH_ENV
+            if [ "<< parameters.image-tag-prefix >>" != "" ]; then
+              IMAGE_TAG_BUILD_NUMBER=<< parameters.image-tag-prefix >>${CIRCLE_BUILD_NUM}
+              IMAGE_TAG_LATEST=<< parameters.image-tag-prefix >>latest
+              echo "export IMAGE_TAG_BUILD_NUMBER=$IMAGE_TAG_BUILD_NUMBER" >> $BASH_ENV
+              echo "export IMAGE_TAG_LATEST=$IMAGE_TAG_LATEST" >> $BASH_ENV
+            fi
+      - slack/notify:
+          event: always
+          channel: $SLACK_CHANNEL_ID
+          custom: |
+            {
+              "blocks": [
+                {
+                  "type": "header",
+                  "text": {"type": "plain_text", "text": "Mock-Lab Build Started", "emoji": true}
+                }
+              ]
+            }
+      - build
+      - push:
+          image-tag-prefix: << parameters.image-tag-prefix >>
+      - slack/notify:
+          event: pass
+          channel: $SLACK_CHANNEL_ID
+          custom: |
+            {"text": "Mock-Lab image pushed to ECR successfully!"}
+      - slack/notify:
+          event: fail
+          channel: $SLACK_CHANNEL_ID
+          custom: |
+            {"text": "Mock-Lab image build or push failed."}
+
+workflows:
+  main:
+    when:
+      equal: [ "main", << pipeline.git.branch >> ]
+    jobs:
+      - docker-build-and-push:
+          image-tag-prefix: ''
+          context: shared-secrets
