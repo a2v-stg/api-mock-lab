@@ -17,8 +17,7 @@ commands:
             echo "AWS_ACCOUNT_ID=${AWS_ACCOUNT_ID}" >> ${CIRCLE_WORKING_DIRECTORY}/.env
             echo "AWS_REGION=${AWS_REGION}" >> ${CIRCLE_WORKING_DIRECTORY}/.env
             echo "IMAGE_REPO_NAME=${IMAGE_REPO_NAME}" >> ${CIRCLE_WORKING_DIRECTORY}/.env
-            echo "Starting Docker build via Makefile..."
-            cd deploy/docker && make build
+            cd deploy/docker && make build AWS_ACCOUNT_ID=${AWS_ACCOUNT_ID} AWS_REGION=${AWS_REGION} IMAGE_REPO_NAME=${IMAGE_REPO_NAME}
   push:
     parameters:
       image-tag-prefix:
