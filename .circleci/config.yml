@@ -14,8 +14,14 @@ commands:
             AWS_ACCOUNT_ID=${AWS_ACCOUNT_ID} \
             AWS_REGION=${AWS_REGION} \
             IMAGE_REPO_NAME=${IMAGE_REPO_NAME} \
-            cd deploy/docker && \
-            make build
+            DOCKER_BUILDKIT=1 docker build --progress=plain \
+              --secret id=dot-env,src=${CIRCLE_WORKING_DIRECTORY}/.env \
+              --build-arg CODEBUILD_BUILD_NUMBER=${IMAGE_TAG_BUILD_NUMBER} \
+              --build-arg CODEBUILD_RESOLVED_SOURCE_VERSION=${CIRCLE_SHA1} \
+              --build-arg CODEBUILD_START_TIME="<<pipeline.trigger_parameters.circleci.event_time>>" \
+              --build-arg CODEBUILD_WEBHOOK_HEAD_REF=${CIRCLE_BRANCH} \
+              -t ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${IMAGE_REPO_NAME}:latest \
+              -f deploy/docker/Dockerfile.monolith .
 
           
           
