@@ -1,5 +1,4 @@
 version: 2.1
-
 orbs:
   aws-cli: circleci/aws-cli@3.1.5
   slack: circleci/slack@4.13.3
@@ -11,13 +10,23 @@ commands:
       - run:
           name: Building Docker image
           command: |
-            echo "GH_TOKEN=${GH_TOKEN}" >> ${CIRCLE_WORKING_DIRECTORY}/.env
-            echo "LC_GH_TOKEN=${LC_GH_TOKEN}" >> ${CIRCLE_WORKING_DIRECTORY}/.env
-            echo "SLACK_CHANNEL_ID=${SLACK_CHANNEL_ID}" >> ${CIRCLE_WORKING_DIRECTORY}/.env
-            echo "AWS_ACCOUNT_ID=${AWS_ACCOUNT_ID}" >> ${CIRCLE_WORKING_DIRECTORY}/.env
-            echo "AWS_REGION=${AWS_REGION}" >> ${CIRCLE_WORKING_DIRECTORY}/.env
-            echo "IMAGE_REPO_NAME=${IMAGE_REPO_NAME}" >> ${CIRCLE_WORKING_DIRECTORY}/.env
-            cd deploy/docker && make build AWS_ACCOUNT_ID=${AWS_ACCOUNT_ID} AWS_REGION=${AWS_REGION} IMAGE_REPO_NAME=${IMAGE_REPO_NAME}
+            echo "Building Docker image with ECR tag..."
+            cd deploy/docker
+            make build \
+              AWS_ACCOUNT_ID=${AWS_ACCOUNT_ID} \
+              AWS_REGION=${AWS_REGION} \
+              IMAGE_REPO_NAME=${IMAGE_REPO_NAME} \
+              DOCKER_BUILD_CMD="DOCKER_BUILDKIT=1 docker build \
+                --secret id=dot-env,src=${CIRCLE_WORKING_DIRECTORY}/.env \
+                --build-arg CODEBUILD_START_TIME='<<pipeline.trigger_parameters.circleci.event_time>>' \
+                --build-arg CODEBUILD_RESOLVED_SOURCE_VERSION=${CIRCLE_SHA1} \
+                --build-arg CODEBUILD_SOURCE_VERSION=${CIRCLE_SHA1} \
+                --build-arg CODEBUILD_BUILD_NUMBER=${IMAGE_TAG_BUILD_NUMBER} \
+                --build-arg CODEBUILD_WEBHOOK_HEAD_REF=${CIRCLE_BRANCH} \
+                -t ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${IMAGE_REPO_NAME}:latest \
+                -f deploy/docker/Dockerfile.monolith ."
+
+
   push:
     parameters:
       image-tag-prefix:
