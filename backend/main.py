@@ -524,6 +524,15 @@ def create_mock_endpoint(
     scenarios_json = "[]"
     if endpoint.response_scenarios:
         scenarios_json = json.dumps([s.model_dump() for s in endpoint.response_scenarios])
+    # Validate scenario weights length if provided
+    weights_json = None
+    if hasattr(endpoint, 'scenario_weights') and endpoint.scenario_weights is not None:
+        try:
+            # Coerce to floats and ensure non-negative
+            weights_list = [max(0.0, float(w)) for w in endpoint.scenario_weights]
+            weights_json = json.dumps(weights_list)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid scenario_weights")
     
     # Validate request schema if provided
     if endpoint.request_schema:
@@ -559,6 +568,8 @@ def create_mock_endpoint(
         is_active=endpoint.is_active,
         response_scenarios=scenarios_json,
         active_scenario_index=endpoint.active_scenario_index,
+        scenario_selection_mode=getattr(endpoint, 'scenario_selection_mode', 'fixed') or 'fixed',
+        scenario_weights=weights_json or json.dumps([]),
         # Callback fields
         callback_enabled=endpoint.callback_enabled,
         callback_url=endpoint.callback_url,
@@ -657,6 +668,13 @@ def update_mock_endpoint(
             else:
                 scenarios_list.append(s)  # Already a dict
         update_data["response_scenarios"] = json.dumps(scenarios_list)
+    # Convert scenario_weights to JSON string if present
+    if "scenario_weights" in update_data and update_data["scenario_weights"] is not None:
+        try:
+            weights_list = [max(0.0, float(w)) for w in update_data["scenario_weights"]]
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid scenario_weights")
+        update_data["scenario_weights"] = json.dumps(weights_list)
     
     # Validate request schema if provided
     if "request_schema" in update_data and update_data["request_schema"]:
@@ -742,6 +760,8 @@ def switch_active_scenario(
         raise HTTPException(status_code=400, detail="Invalid scenario index")
     
     endpoint.active_scenario_index = scenario_index
+    # Switching explicitly sets selection to fixed mode
+    endpoint.scenario_selection_mode = "fixed"
     endpoint.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(endpoint)
@@ -1013,8 +1033,43 @@ async def handle_mock_request(request: Request, db: Session):
     
     # Check if scenarios are configured
     scenarios = json.loads(mock_endpoint.response_scenarios or "[]")
-    if scenarios and 0 <= mock_endpoint.active_scenario_index < len(scenarios):
-        active_scenario = scenarios[mock_endpoint.active_scenario_index]
+    if scenarios:
+        selected_index = None
+        mode = getattr(mock_endpoint, 'scenario_selection_mode', 'fixed') or 'fixed'
+        if mode == 'random':
+            import random
+            selected_index = random.randrange(0, len(scenarios))
+        elif mode == 'weighted':
+            import random
+            try:
+                weights = json.loads(getattr(mock_endpoint, 'scenario_weights', '[]') or '[]')
+            except Exception:
+                weights = []
+            # Normalize weights; fallback to equal if invalid
+            if not isinstance(weights, list) or len(weights) != len(scenarios):
+                weights = [1.0] * len(scenarios)
+            total = sum([w if isinstance(w, (int, float)) and w >= 0 else 0 for w in weights])
+            if total <= 0:
+                weights = [1.0] * len(scenarios)
+                total = float(len(scenarios))
+            # Roulette wheel selection
+            r = random.uniform(0, total)
+            upto = 0.0
+            for i, w in enumerate(weights):
+                wv = w if isinstance(w, (int, float)) and w >= 0 else 0.0
+                if upto + wv >= r:
+                    selected_index = i
+                    break
+                upto += wv
+            if selected_index is None:
+                selected_index = len(scenarios) - 1
+        else:
+            # fixed
+            if 0 <= mock_endpoint.active_scenario_index < len(scenarios):
+                selected_index = mock_endpoint.active_scenario_index
+            else:
+                selected_index = 0
+        active_scenario = scenarios[selected_index]
         response_code = active_scenario["response_code"]
         response_body_str = active_scenario["response_body"]
         response_headers_dict = active_scenario.get("response_headers", {})

@@ -25,6 +25,9 @@ def run_migrations(engine):
         # Migration 4: Add user password reset fields
         migrate_add_user_password_reset_fields(engine)
         
+        # Migration 5: Add scenario selection fields to mock_endpoints
+        migrate_add_scenario_selection_fields(engine)
+        
         logger.info("All migrations completed successfully")
     except Exception as e:
         logger.error(f"Migration failed: {e}")
@@ -214,3 +217,42 @@ def migrate_add_user_password_reset_fields(engine):
             logger.info("✓ Added password_reset_token_expires column")
         else:
             logger.info("✓ password_reset_token_expires column already exists")
+
+
+def migrate_add_scenario_selection_fields(engine):
+    """
+    Migration: Add scenario selection fields to mock_endpoints table
+    - Adds scenario_selection_mode (fixed|random|weighted)
+    - Adds scenario_weights (JSON array stored as TEXT)
+    """
+    if not table_exists(engine, 'mock_endpoints'):
+        logger.info("Mock endpoints table doesn't exist yet, skipping migration")
+        return
+    
+    with engine.connect() as conn:
+        db_url = str(engine.url)
+        is_sqlite = 'sqlite' in db_url
+        # scenario_selection_mode
+        if not column_exists(engine, 'mock_endpoints', 'scenario_selection_mode'):
+            logger.info("Adding scenario_selection_mode column to mock_endpoints table")
+            default_expr = "'fixed'"
+            conn.execute(text(f"""
+                ALTER TABLE mock_endpoints 
+                ADD COLUMN scenario_selection_mode VARCHAR DEFAULT {default_expr} NOT NULL
+            """))
+            conn.commit()
+            logger.info("✓ Added scenario_selection_mode column")
+        else:
+            logger.info("✓ scenario_selection_mode column already exists")
+        
+        # scenario_weights
+        if not column_exists(engine, 'mock_endpoints', 'scenario_weights'):
+            logger.info("Adding scenario_weights column to mock_endpoints table")
+            conn.execute(text("""
+                ALTER TABLE mock_endpoints 
+                ADD COLUMN scenario_weights TEXT
+            """))
+            conn.commit()
+            logger.info("✓ Added scenario_weights column")
+        else:
+            logger.info("✓ scenario_weights column already exists")

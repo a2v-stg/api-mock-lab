@@ -86,6 +86,8 @@ class MockEndpointCreate(BaseModel):
     is_active: bool = True
     response_scenarios: Optional[List[ResponseScenario]] = []
     active_scenario_index: int = 0
+    scenario_selection_mode: str = "fixed"  # fixed | random | weighted
+    scenario_weights: Optional[List[float]] = None
     # Callback configuration
     callback_enabled: bool = False
     callback_url: Optional[str] = None
@@ -109,6 +111,8 @@ class MockEndpointUpdate(BaseModel):
     is_active: Optional[bool] = None
     response_scenarios: Optional[List[ResponseScenario]] = None
     active_scenario_index: Optional[int] = None
+    scenario_selection_mode: Optional[str] = None
+    scenario_weights: Optional[List[float]] = None
     # Callback configuration
     callback_enabled: Optional[bool] = None
     callback_url: Optional[str] = None
@@ -134,6 +138,8 @@ class MockEndpointResponse(BaseModel):
     is_active: bool
     response_scenarios: str  # JSON string
     active_scenario_index: int
+    scenario_selection_mode: str
+    scenario_weights: Optional[str]
     callback_enabled: bool
     callback_url: Optional[str]
     callback_method: str

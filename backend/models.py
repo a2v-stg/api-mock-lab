@@ -63,6 +63,9 @@ class MockEndpoint(Base):
     # New fields for multi-response scenarios
     response_scenarios = Column(Text, default="[]")  # JSON array of response configs
     active_scenario_index = Column(Integer, default=0)  # Which scenario is currently active
+    # Scenario selection behavior
+    scenario_selection_mode = Column(String, default="fixed")  # fixed | random | weighted
+    scenario_weights = Column(Text, default="[]")  # JSON array of weights aligned with scenarios
     # Callback configuration
     callback_enabled = Column(Boolean, default=False)
     callback_url = Column(String, nullable=True)  # Static callback URL

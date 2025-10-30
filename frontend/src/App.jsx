@@ -1679,6 +1679,15 @@ function EndpointCard({ endpoint, basePath, baseUrl, onEdit, onDelete }) {
     }
   }
 
+  const setScenarioMode = async (mode) => {
+    try {
+      await api.put(`/admin/endpoints/${endpoint.id}`, { scenario_selection_mode: mode })
+      window.location.reload()
+    } catch (error) {
+      alert('Error updating scenario mode: ' + (error.response?.data?.detail || error.message))
+    }
+  }
+
   const methodColors = {
     GET: 'bg-green-100 text-green-800',
     POST: 'bg-blue-100 text-blue-800',
@@ -1758,15 +1767,24 @@ function EndpointCard({ endpoint, basePath, baseUrl, onEdit, onDelete }) {
         <div className="mb-2">
           <label className="block text-xs text-gray-600 mb-1">Active Scenario:</label>
           <select
-            value={endpoint.active_scenario_index || 0}
-            onChange={(e) => switchScenario(parseInt(e.target.value))}
+            value={(endpoint.scenario_selection_mode === 'random' && 'random') || (endpoint.scenario_selection_mode === 'weighted' && 'weighted') || String(endpoint.active_scenario_index || 0)}
+            onChange={(e) => {
+              const val = e.target.value
+              if (val === 'random' || val === 'weighted') {
+                setScenarioMode(val)
+              } else {
+                switchScenario(parseInt(val))
+              }
+            }}
             className="w-full px-2 py-1 text-xs border border-gray-300 rounded bg-white"
           >
             {scenarios.map((scenario, index) => (
-              <option key={index} value={index}>
+              <option key={index} value={String(index)}>
                 {scenario.name} ({scenario.response_code})
               </option>
             ))}
+            <option value="random">Randomize (any scenario)</option>
+            <option value="weighted">Weighted mix (configure in Edit)</option>
           </select>
         </div>
       )}
@@ -1814,6 +1832,13 @@ function EndpointForm({ entityId, endpoint, onSave, onCancel }) {
         is_active: endpoint.is_active !== undefined ? endpoint.is_active : true,
         response_scenarios: scenarios,
         active_scenario_index: endpoint.active_scenario_index || 0,
+        scenario_selection_mode: endpoint.scenario_selection_mode || 'fixed',
+        scenario_weights: (() => {
+          try {
+            const w = endpoint.scenario_weights ? JSON.parse(endpoint.scenario_weights) : []
+            return Array.isArray(w) ? w : []
+          } catch { return [] }
+        })(),
         // Legacy fields (for backward compatibility)
         response_code: 200,
         response_body: '{}',
@@ -1839,6 +1864,8 @@ function EndpointForm({ entityId, endpoint, onSave, onCancel }) {
       is_active: true,
       response_scenarios: [],
       active_scenario_index: 0,
+      scenario_selection_mode: 'fixed',
+      scenario_weights: [],
       // Legacy fields
       response_code: 200,
       response_body: '{}',
@@ -1902,9 +1929,18 @@ function EndpointForm({ entityId, endpoint, onSave, onCancel }) {
         setEditingScenarioIndex(null)
       } else {
         // Add new scenario
+        const nextScenarios = [...formData.response_scenarios, currentScenario]
+        const nextWeights = (() => {
+          const w = [...(formData.scenario_weights || [])]
+          if (formData.scenario_selection_mode === 'weighted') {
+            while (w.length < nextScenarios.length) w.push(1)
+          }
+          return w
+        })()
         setFormData({
           ...formData,
-          response_scenarios: [...formData.response_scenarios, currentScenario]
+          response_scenarios: nextScenarios,
+          scenario_weights: nextWeights
         })
       }
       
@@ -1939,10 +1975,12 @@ function EndpointForm({ entityId, endpoint, onSave, onCancel }) {
 
   const removeScenario = (index) => {
     const newScenarios = formData.response_scenarios.filter((_, i) => i !== index)
+    const newWeights = (formData.scenario_weights || []).filter((_, i) => i !== index)
     setFormData({
       ...formData,
       response_scenarios: newScenarios,
-      active_scenario_index: Math.min(formData.active_scenario_index || 0, Math.max(0, newScenarios.length - 1))
+      active_scenario_index: Math.min(formData.active_scenario_index || 0, Math.max(0, newScenarios.length - 1)),
+      scenario_weights: newWeights
     })
     
     // Clear edit state if we're deleting the scenario being edited
@@ -1970,6 +2008,8 @@ function EndpointForm({ entityId, endpoint, onSave, onCancel }) {
         is_active: formData.is_active,
         response_scenarios: formData.response_scenarios,
         active_scenario_index: formData.active_scenario_index,
+        scenario_selection_mode: formData.scenario_selection_mode,
+        scenario_weights: formData.scenario_selection_mode === 'weighted' ? formData.scenario_weights : null,
         // Legacy fields (using first scenario or defaults)
         response_code: formData.response_scenarios[0]?.response_code || 200,
         response_body: formData.response_scenarios[0]?.response_body || '{}',
@@ -2314,6 +2354,53 @@ function EndpointForm({ entityId, endpoint, onSave, onCancel }) {
             <div className="space-y-4">
               <h4 className="font-semibold text-gray-800 border-b pb-2">Response Scenarios</h4>
               <p className="text-sm text-gray-600">Add multiple response scenarios and switch between them dynamically</p>
+
+              {/* Scenario selection behavior */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Selection Mode</label>
+                  <select
+                    value={formData.scenario_selection_mode}
+                    onChange={(e) => {
+                      const mode = e.target.value
+                      setFormData({ ...formData, scenario_selection_mode: mode })
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="fixed">Fixed (use active scenario)</option>
+                    <option value="random">Random (each request picks any)</option>
+                    <option value="weighted">Weighted (configure weights)</option>
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">Random/Weighted ignore the active scenario selection.</p>
+                </div>
+                {formData.scenario_selection_mode === 'weighted' && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Weights</label>
+                    <div className="flex flex-wrap gap-2">
+                      {formData.response_scenarios.map((s, i) => (
+                        <div key={i} className="flex items-center gap-1">
+                          <span className="text-xs text-gray-500">{s.name}</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.1"
+                            value={(formData.scenario_weights && formData.scenario_weights[i] !== undefined) ? formData.scenario_weights[i] : 1}
+                            onChange={(e) => {
+                              const val = Math.max(0, parseFloat(e.target.value || '0'))
+                              const weights = [...(formData.scenario_weights || [])]
+                              while (weights.length < formData.response_scenarios.length) weights.push(1)
+                              weights[i] = val
+                              setFormData({ ...formData, scenario_weights: weights })
+                            }}
+                            className="w-20 px-2 py-1 text-sm border border-gray-300 rounded"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">Weights are relative; they will be normalized automatically.</p>
+                  </div>
+                )}
+              </div>
               
               {/* Add/Edit scenario */}
               <div className={`p-4 rounded-lg border-2 space-y-3 ${
