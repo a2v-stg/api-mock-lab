@@ -32,6 +32,8 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-mocklab}:${POSTGRES_PASSWORD:-mocklab_secret_password}@db:5432/${POSTGRES_DB:-mocklab}
       SECRET_KEY: ${SECRET_KEY:-change-this-in-production-super-secret-key-12345}
+      # REDIS_URL: Optional - if set, uses Redis for session storage. If not set, uses PostgreSQL (default)
+      # REDIS_URL: redis://redis:6379/0
       PYTHONUNBUFFERED: 1
     ports:
       - "${BACKEND_PORT:-8001}:8001"
@@ -70,6 +72,8 @@ services:
 volumes:
   postgres_data:
     driver: local
+  # redis_data:  # Uncomment if using Redis
+  #   driver: local
 
 networks:
   mocklab-network:

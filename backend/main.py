@@ -24,6 +24,8 @@ from backend.migrations import run_migrations
 from backend.placeholders import replace_placeholders
 from backend.schema_validator import validate_request as validate_schema, is_valid_schema
 from backend.callbacks import schedule_callback, extract_callback_url
+from backend.session_store import initialize_session_store
+from backend.database import SessionLocal
 import logging
 
 # Configure logging
@@ -40,11 +42,44 @@ except Exception as e:
 # Create database tables (for new installations or missing tables)
 Base.metadata.create_all(bind=engine)
 
+# Initialize session store (defaults to PostgreSQL, uses Redis if REDIS_URL is set)
+session_store = None
+try:
+    session_store = initialize_session_store(SessionLocal)
+except Exception as e:
+    logger.error(f"Failed to initialize session store: {e}")
+    # Continue anyway - session store will be initialized lazily
+
 app = FastAPI(
     title="Mock-Lab",
     description="Dynamic API mocking service with real-time monitoring and scenario-based testing",
     version="1.0.0"
 )
+
+# Startup event: Schedule periodic cleanup of expired tokens (only for database storage)
+@app.on_event("startup")
+async def startup_event():
+    """Startup tasks including session token cleanup."""
+    global session_store
+    if session_store is None:
+        session_store = initialize_session_store(SessionLocal)
+    
+    # Schedule periodic cleanup of expired tokens (only for database storage)
+    if hasattr(session_store, 'cleanup_expired'):
+        async def cleanup_expired_tokens():
+            """Periodically clean up expired session tokens from database."""
+            while True:
+                await asyncio.sleep(3600)  # Run every hour
+                try:
+                    count = session_store.cleanup_expired()
+                    if count > 0:
+                        logger.info(f"Cleaned up {count} expired session tokens")
+                except Exception as e:
+                    logger.error(f"Error cleaning up expired tokens: {e}")
+        
+        # Start cleanup task in background
+        asyncio.create_task(cleanup_expired_tokens())
+        logger.info("Started background task for cleaning expired session tokens")
 
 # CORS middleware
 app.add_middleware(

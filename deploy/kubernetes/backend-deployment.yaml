@@ -55,6 +55,15 @@ spec:
               name: mocklab-secret
               key: SECRET_KEY
         
+        # Redis URL for session storage (optional - defaults to PostgreSQL if not set)
+        # Uncomment and set REDIS_URL in secret to use Redis instead of PostgreSQL
+        # - name: REDIS_URL
+        #   valueFrom:
+        #     secretKeyRef:
+        #       name: mocklab-secret
+        #       key: REDIS_URL
+        #       optional: true
+        
         resources:
           requests:
             cpu: 500m      # 0.5 CPU

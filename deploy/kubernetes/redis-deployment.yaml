@@ -1,0 +1,90 @@
+# Optional: Redis deployment for session storage
+# This is a basic Redis setup. For production, consider using:
+# - AWS ElastiCache for Redis
+# - Managed Redis service from your cloud provider
+# - Redis Cluster for high availability
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-service
+  namespace: mocklab
+  labels:
+    app: mocklab
+    component: redis
+spec:
+  type: ClusterIP
+  ports:
+  - port: 6379
+    targetPort: 6379
+    protocol: TCP
+    name: redis
+  selector:
+    app: mocklab
+    component: redis
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: mocklab
+  labels:
+    app: mocklab
+    component: redis
+spec:
+  replicas: 1  # For production, use Redis Sentinel or Cluster mode
+  selector:
+    matchLabels:
+      app: mocklab
+      component: redis
+  template:
+    metadata:
+      labels:
+        app: mocklab
+        component: redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        ports:
+        - containerPort: 6379
+          name: redis
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        # Optional: Add password via secret
+        # command:
+        #   - redis-server
+        #   - --requirepass
+        #   - $(REDIS_PASSWORD)
+        # env:
+        # - name: REDIS_PASSWORD
+        #   valueFrom:
+        #     secretKeyRef:
+        #       name: mocklab-secret
+        #       key: REDIS_PASSWORD
+        volumeMounts:
+        - name: redis-data
+          mountPath: /data
+        livenessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: redis-data
+        emptyDir: {}  # For production, use PersistentVolumeClaim
+

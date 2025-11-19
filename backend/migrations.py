@@ -28,6 +28,9 @@ def run_migrations(engine):
         # Migration 5: Add scenario selection fields to mock_endpoints
         migrate_add_scenario_selection_fields(engine)
         
+        # Migration 6: Create session_tokens table for distributed session management
+        migrate_create_session_tokens_table(engine)
+        
         logger.info("All migrations completed successfully")
     except Exception as e:
         logger.error(f"Migration failed: {e}")
@@ -256,3 +259,59 @@ def migrate_add_scenario_selection_fields(engine):
             logger.info("✓ Added scenario_weights column")
         else:
             logger.info("✓ scenario_weights column already exists")
+
+
+def migrate_create_session_tokens_table(engine):
+    """
+    Migration: Create session_tokens table for distributed session management
+    - Creates session_tokens table if it doesn't exist
+    - Used for database-backed session storage (fallback when Redis is not available)
+    """
+    if not table_exists(engine, 'session_tokens'):
+        logger.info("Creating session_tokens table")
+        
+        db_url = str(engine.url)
+        is_sqlite = 'sqlite' in db_url
+        
+        with engine.connect() as conn:
+            if is_sqlite:
+                # SQLite syntax
+                conn.execute(text("""
+                    CREATE TABLE session_tokens (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        token VARCHAR NOT NULL UNIQUE,
+                        user_id INTEGER NOT NULL,
+                        created_at TIMESTAMP NOT NULL,
+                        expires_at TIMESTAMP NOT NULL,
+                        FOREIGN KEY (user_id) REFERENCES users(id)
+                    )
+                """))
+                conn.execute(text("""
+                    CREATE INDEX idx_session_tokens_token ON session_tokens(token)
+                """))
+                conn.execute(text("""
+                    CREATE INDEX idx_session_tokens_expires_at ON session_tokens(expires_at)
+                """))
+            else:
+                # PostgreSQL syntax
+                conn.execute(text("""
+                    CREATE TABLE session_tokens (
+                        id SERIAL PRIMARY KEY,
+                        token VARCHAR NOT NULL UNIQUE,
+                        user_id INTEGER NOT NULL,
+                        created_at TIMESTAMP NOT NULL,
+                        expires_at TIMESTAMP NOT NULL,
+                        FOREIGN KEY (user_id) REFERENCES users(id)
+                    )
+                """))
+                conn.execute(text("""
+                    CREATE INDEX idx_session_tokens_token ON session_tokens(token)
+                """))
+                conn.execute(text("""
+                    CREATE INDEX idx_session_tokens_expires_at ON session_tokens(expires_at)
+                """))
+            
+            conn.commit()
+            logger.info("✓ Created session_tokens table")
+    else:
+        logger.info("✓ session_tokens table already exists")

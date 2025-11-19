@@ -100,3 +100,15 @@ class RequestLog(Base):
     
     entity = relationship("Entity", back_populates="request_logs")
     mock_endpoint = relationship("MockEndpoint", back_populates="request_logs")
+
+class SessionToken(Base):
+    __tablename__ = "session_tokens"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    token = Column(String, unique=True, index=True, nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    expires_at = Column(DateTime, nullable=False, index=True)
+    
+    # Relationship with user
+    user = relationship("User", foreign_keys=[user_id])
